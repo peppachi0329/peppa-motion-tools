@@ -1,0 +1,6 @@
+__pycache__/
+_cache/
+拖進來的PSD/
+輸出/
+*.psd
+*.psb

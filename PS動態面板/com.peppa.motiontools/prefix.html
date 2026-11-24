@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root { --bg: #535353; --fg: #e6e6e6; --btn: #6a6a6a; --btn-hover: #7a7a7a; --cta: #2d9d78; --cta-hover: #33b088; }
+    body { margin: 0; padding: 12px; background: var(--bg); color: var(--fg);
+           font: 12px "Microsoft JhengHei", sans-serif; user-select: none; }
+    h4 { margin: 10px 0 5px; font-size: 11px; font-weight: normal; opacity: .7; }
+    h4:first-child { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 5px; }
+    .row { display: flex; gap: 5px; }
+    .row input { flex: 1; min-width: 0; }
+    button { padding: 7px 4px; border: 0; border-radius: 4px; background: var(--btn); color: var(--fg);
+             font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    button:hover { background: var(--btn-hover); }
+    button.cta { background: var(--cta); color: #fff; }
+    button.cta:hover { background: var(--cta-hover); }
+    input[type=text] { box-sizing: border-box; padding: 5px; border: 1px solid #333; border-radius: 3px;
+                       background: #3a3a3a; color: var(--fg); font: inherit; }
+    label { display: flex; gap: 6px; align-items: center; margin-top: 6px; cursor: pointer; font-size: 11px; opacity: .85; }
+    /* 狀態列固定在面板最下面，捲到哪都看得到結果或錯誤 */
+    body { padding-bottom: 44px; }
+    #status { position: fixed; left: 0; right: 0; bottom: 0; min-height: 16px; padding: 7px 12px;
+              background: #2b2b2b; color: #fff; font-size: 12px; border-top: 1px solid #222; z-index: 10; }
+    #status.flash { background: #2d9d78; }
+  </style>
+</head>
+<body>
+  <h4>動態前綴（可疊加，再按一次取消；有選就改選取的，沒選改全部工作區域）</h4>
+  <div class="grid">
+    <button class="cta motion" data-op="main" data-word="飄浮" title="上下飄浮（飄浮／搖擺／亮光三選一）">飄浮</button>
+    <button class="cta motion" data-op="main" data-word="搖擺" title="左右搖擺（飄浮／搖擺／亮光三選一）">搖擺</button>
+    <button class="cta motion" data-op="main" data-word="亮光" title="閃光（飄浮／搖擺／亮光三選一；閃光不會再縮放）">亮光</button>
+    <button class="cta motion" data-op="toggle" data-word="呼吸" title="放大縮小，可疊在其他動態上">呼吸</button>
+    <button class="cta motion" data-op="toggle" data-word="流光" title="流光，可疊在其他動態上">流光</button>
+    <button class="cta motion" data-op="toggle" data-word="逐格" title="飄浮／搖擺／縮放改成逐格（流光、閃光不受影響）">逐格</button>
+  </div>
+  <div class="grid" style="margin-top:5px">
+    <button id="btnRemove" title="移除前綴，還原原名">移除前綴</button>
+    <button id="btnSize" title="工作區域名稱後面加上「 寬x高」">加尺寸</button>
+    <button id="btnNumber" title="照畫面位置（上到下、左到右）改成 01｜原名、02｜原名…">依序編號</button>
+  </div>
+  <div class="row" style="margin-top:5px">
+    <input type="text" id="custom" placeholder="自訂前綴，例如：動-縮放 ">
+    <button id="btnCustom">套用</button>
+  </div>
+  <label><input type="checkbox" id="replace" checked>已有「動-」前綴時先換掉</label>
+
+  <div style="display:none">
+  <h4>字體（選文字圖層或群組）</h4>
+  <div class="grid">
+    <button class="font" data-font="DreamHanSansTW-W13" data-tracking="35" title="夢源黑體 W13・字距 35">夢源 W13・35</button>
+    <button class="font" data-font="DreamHanSansTW-W20" data-tracking="35" title="夢源黑體 W20・字距 35">夢源 W20・35</button>
+    <button class="font" data-font="Poppins-Medium" data-tracking="0" title="Poppins Medium・字距 0">Poppins M・0</button>
+    <button class="font" data-font="" data-tracking="0" title="只改字距 0，字體不變">字距 0</button>
+    <button class="font" data-font="" data-tracking="30" title="只改字距 30，字體不變">字距 30</button>
+    <button class="font" data-font="" data-tracking="50" title="只改字距 50，字體不變">字距 50</button>
+  </div>
+
+  <h4>陰影（選圖層或群組；可把目前圖層的陰影存成預設）</h4>
+  <div class="grid" id="shadowList"></div>
+  <div class="row" style="margin-top:5px">
+    <input type="text" id="shadowName" placeholder="新預設名稱">
+    <button id="btnShadowSave" title="讀目前選取圖層的陰影參數，存成預設">存目前陰影</button>
+  </div>
+
+  <h4>常用圖層（點名稱放入，右鍵刪除）</h4>
+  <div class="grid" id="libList"></div>
+  <div class="row" style="margin-top:5px">
+    <input type="text" id="libName" placeholder="名稱">
+    <button id="btnLibSave" title="把選取的圖層存進常用圖層">存選取圖層</button>
+    <button id="btnLibFolder" title="打開常用圖層資料夾">資料夾</button>
+  </div>
+
+  </div>
+  <div style="display:none">
+  <h4>動畫（① 選圖層按效果＝標記在名稱上，可多個 ② 全部設好按「一鍵輸出」：依參考線切段，有動的出 GIF、沒動的出 PNG）</h4>
+  <div class="row" style="margin-bottom:5px">
+    <select id="animFrames" style="flex:none; background:#3a3a3a; color:var(--fg); border:1px solid #333; border-radius:3px; padding:4px" title="格數">
+      <option value="2" selected>2 格</option>
+      <option value="3">3 格</option>
+    </select>
+    <input type="text" id="animDelay" value="0.3" style="width:38px; flex:none; text-align:center" title="每格停幾秒（24 格建議 0.08）">
+    <span style="align-self:center; opacity:.7">秒</span>
+    <input type="text" id="animAmount" value="" placeholder="預設" style="width:38px; flex:none; text-align:center" title="空白＝用各效果的預設值。飄浮／晃動／跳一下：px；閃爍／輪流亮：變暗 %；放大縮小：%；搖擺旋轉：角度；發光閃爍：光暈 px">
+    <span style="align-self:center; opacity:.7">幅度</span>
+  </div>
+  <div class="grid">
+    <button class="cta anim" data-kind="float" title="上下飄浮，幅度＝px">飄浮</button>
+    <button class="cta anim" data-kind="sway" title="左右晃動，幅度＝px">晃動</button>
+    <button class="cta anim" data-kind="scale" title="以圖層中心放大縮小，幅度＝放大幾 %（建議 5～10）">放大縮小</button>
+    <button class="cta anim" data-kind="blink" title="忽明忽暗，幅度＝最暗降低幾 %（建議 40～60）">閃爍</button>
+    <button class="cta anim" data-kind="rotate" title="左右擺動旋轉，幅度＝角度（建議 5～8）">搖擺旋轉</button>
+    <button class="cta anim" data-kind="bounce" title="往上跳一下並拉長，幅度＝跳多高 px">跳一下</button>
+    <button class="cta anim" data-kind="glow" title="外光暈一亮一暗，顏色＝前景色，幅度＝光暈大小 px（建議 15～30）">發光閃爍</button>
+    <button class="cta anim" data-kind="chase" title="選 2 個以上圖層／群組，照畫面位置（上到下、左到右）輪流亮，其他變暗；幅度＝其他變暗幾 %（建議 50～70）；格數＝選幾個">輪流亮</button>
+    <button class="cta anim" data-kind="chasescale" title="選 2 個以上圖層／群組，照畫面位置（上到下、左到右）輪流放大；幅度＝放大幾 %（預設 8）；格數＝選幾個">輪流放大</button>
+    <button class="cta anim" data-kind="sweep" title="一道白光掃過圖層再停一下（固定 30 格，約 1.5 秒一圈）">流光</button>
+  </div>
+  <div class="grid" style="margin-top:5px">
+    <button id="btnExportOne" class="cta" title="只輸出選取圖層所在的那一段（有動畫出 GIF、沒動畫出 PNG），編號跟全部輸出一樣">單獨輸出選取那段</button>
+    <button class="cta slice" data-fmt="png" title="不管動畫，整頁照水平參考線切成平面 PNG（下載\切圖）">全部切平面 PNG</button>
+    <button id="btnExportAll" class="cta" title="依水平參考線切段：有標記動畫的段出 GIF、其他段出 PNG，照順序編號存到「下載\切圖」">一鍵輸出全部</button>
+  </div>
+
+  </div>
+  <div style="display:none">
+  <h4>輸出</h4>
+  <div class="grid">
+    <button id="btnPDF" class="cta" title="影像平面化 → 存 PDF（PSD 旁邊、同檔名）→ 還原平面化，原檔不受影響">一鍵 PDF</button>
+    <button id="btnPNG" class="cta" title="整份文件存 PNG-24（含透明，存到「下載」資料夾、同檔名），原檔不受影響">一鍵 PNG</button>
+    <button id="btnLayersPNG" class="cta" title="選取的圖層各存一張 PNG-24（裁掉透明邊，檔名＝圖層名稱，存到「下載」資料夾）">圖層 PNG</button>
+  </div>
+  <div class="row" style="margin-top:5px">
+    <input type="text" id="gifDelay" value="0.5" style="width:44px; flex:none; text-align:center" title="每格停留秒數">
+    <span style="align-self:center; opacity:.7">秒／格</span>
+    <button id="btnGIF" class="cta" style="flex:1" title="選 2 個以上圖層或群組，一層一格（圖層面板最下面那層是第 1 格），存 GIF 到「下載」資料夾">逐格 GIF</button>
+    <button id="btnBleed" title="畫布上下左右各加 3mm（依文件解析度換算）">加出血 3mm</button>
+    <button class="slice" data-fmt="jpg" title="用水平參考線把整張切成一段一段，各存一張 JPG（下載\切圖）">參考線切圖 JPG</button>
+    <button class="slice" data-fmt="png" title="用水平參考線把整張切成一段一段，各存一張 PNG（下載\切圖）">參考線切圖 PNG</button>
+  </div>
+
+  <h4>尋找</h4>
+  <div class="grid">
+    <button id="btnFindSF" title="選取整份文件裡所有套了智慧型濾鏡的圖層">有智慧型濾鏡的圖層</button>
+  </div>
+
+  <h4>線稿去背（黑線白底的圖層 → 透明底；原圖會隱藏保留）</h4>
+  <div class="row" style="margin-bottom:5px">
+    <span style="align-self:center; opacity:.7">對比</span>
+    <input type="text" id="laBlack" value="80" style="width:36px; flex:none; text-align:center" title="色階黑點：比這個暗的都當線條（調高＝線變粗、灰色也會保留）">
+    <span style="align-self:center; opacity:.7">～</span>
+    <input type="text" id="laWhite" value="180" style="width:36px; flex:none; text-align:center" title="色階白點：比這個亮的都當背景去掉（調低＝去得更乾淨、線變細）">
+  </div>
+  <div class="grid">
+    <button class="cta lineart" data-fill="000000" title="線條填黑色">去背（黑線）</button>
+    <button class="cta lineart" data-fill="FFFFFF" title="線條填白色">去背（白線）</button>
+    <button class="cta lineart" data-fill="fg" title="線條填前景色">去背（前景色）</button>
+  </div>
+
+  <h4>智慧型物件</h4>
+  <div class="grid">
+    <button id="btnClipSOAll" class="cta clipso" data-all="true" title="整份文件找出所有剪裁遮色片，各自連同底下那層轉成智慧型物件">全部剪裁→智慧型物件</button>
+    <button id="btnClipSO" class="clipso" data-all="false" title="只轉選取的（選剪裁層或底層都可以）">只轉選取的</button>
+    <button id="btnUngroup" title="解散選取的群組（可多選；工作區域不會被拆）">解散群組</button>
+    <button id="btnUnlockAll" title="整份文件所有圖層、群組的鎖定全部解除（背景圖層也會轉成一般圖層）">解除全部鎖定</button>
+  </div>
+
+  <h4>文字對齊（選文字圖層或群組）</h4>
+  <div class="grid">
+    <button class="justify" data-j="left">靠左</button>
+    <button class="justify" data-j="center">置中</button>
+    <button class="justify" data-j="right">靠右</button>
+  </div>
+
+  <h4>顏色（文字改字色、形狀改填色、智慧型物件加顏色覆蓋）</h4>
+  <div class="grid">
+    <button class="color" data-mode="hex" data-hex="000000" title="黑色 #000000">⬛ 黑</button>
+    <button class="color" data-mode="hex" data-hex="FFFFFF" title="白色 #FFFFFF">⬜ 白</button>
+    <button class="color" data-mode="pick" title="開檢色器，游標移到畫面上就能吸色">吸管…</button>
+    <button class="color" data-mode="fg" title="套用目前的前景色（可先用 I 吸管工具吸色）">前景色</button>
+  </div>
+  <div class="row" style="margin-top:5px">
+    <input type="text" id="colorHex" placeholder="色碼，例如 7556A8，按 Enter 套用">
+    <button class="color" data-mode="hex" data-hexinput="colorHex">套用色碼</button>
+  </div>
+
+  <h4>筆畫（形狀用形狀筆畫，其他圖層用混合選項的筆畫）</h4>
+  <div class="row" style="margin-bottom:5px">
+    <input type="text" id="strokeSize" value="2" style="width:48px; flex:none; text-align:center" title="筆畫粗細（px）">
+    <span style="align-self:center; opacity:.7">px</span>
+  </div>
+  <div class="grid">
+    <button class="stroke" data-mode="hex" data-hex="FFFFFF" title="白色筆畫">⬜ 白</button>
+    <button class="stroke" data-mode="pick" title="開檢色器，游標移到畫面上就能吸色">吸管…</button>
+    <button class="stroke" data-mode="fg" title="用目前的前景色">前景色</button>
+  </div>
+  <div class="row" style="margin-top:5px">
+    <input type="text" id="strokeHex" placeholder="筆畫色碼，按 Enter 套用">
+    <button class="stroke" data-mode="hex" data-hexinput="strokeHex">套用色碼</button>
+  </div>
+
+  <h4>放大縮小（以原尺寸計算，可疊加：+10% 兩次＝120%）</h4>
+  <div class="grid">
+    <button class="cta stepscale" data-d="1" title="以中心放大，原尺寸的 +10%">放大 10%</button>
+    <button class="cta stepscale" data-d="-1" title="以中心縮小，原尺寸的 -10%">縮小 10%</button>
+    <button class="stepscale" data-d="0" title="回到第一次按時的大小">回原尺寸</button>
+  </div>
+
+  <h4>圓角（選矩形形狀圖層或群組，按幾次就疊加幾次）</h4>
+  <div class="grid">
+    <button class="radius" data-r="10" data-add="1">+10</button>
+    <button class="radius" data-r="30" data-add="1">+30</button>
+    <button class="radius" data-r="50" data-add="1">+50</button>
+    <button class="radius" data-r="100" data-add="1">+100</button>
+    <button class="radius" data-r="0" data-add="0">歸零</button>
+  </div>
+
+  <h4>新增矩形（放在目前工作區域左上角，顏色用前景色）</h4>
+  <div class="grid">
+    <button class="addrect" data-w="1920" data-h="1080" title="新增 1920×1080 矩形（橫）">1920×1080 橫</button>
+    <button class="addrect" data-w="1080" data-h="1920" title="新增 1080×1920 矩形（直）">1080×1920 直</button>
+  </div>
+
+  <h4>新增工作區域（放在最右邊）</h4>
+  <div class="grid">
+    <button id="btnFromRect" class="cta" title="先選好矩形（可多選），照每個矩形的位置和大小各建一個工作區域">依矩形建立</button>
+    <button class="add" data-w="1920" data-h="720" data-name="1920x720" title="新增 1920×720（橫）">1920×720</button>
+    <button class="add" data-w="1080" data-h="1920" data-name="1080x1920" title="新增 1080×1920（直）">1080×1920</button>
+    <button class="add" data-w="1080" data-h="1350" data-name="1080x1350" title="新增 1080×1350（直）">1080×1350</button>
+    <button class="add" data-w="1000" data-h="10000" data-name="嘖嘖 1000x10000" title="新增 1000×10000（嘖嘖）">嘖嘖</button>
+    <button class="add" data-w="1200" data-h="10000" data-name="嘖嘖寬 1200x10000" title="新增 1200×10000（嘖嘖寬）">嘖嘖寬</button>
+    <button class="add" data-w="1200" data-h="1200" data-name="1200x1200" title="新增 1200×1200">1200×1200</button>
+    <button class="add" data-w="1500" data-h="20000" data-name="銷售頁 1500x20000" title="新增 1500×20000（銷售頁）">銷售頁</button>
+  </div>
+
+  <div id="status"></div>
+
+  </div>
+  <script>
+    var cep = window.__adobe_cep__;
+
+    // 自己再載一次 host.jsx：萬一 Photoshop 自動載入失敗，這裡會補載，並把錯誤行號顯示在狀態列
+    (function () {
+      try {
+        var ext = decodeURI(cep.getSystemPath("extension")).replace(/^file:\/{2,3}/, "").replace(/\\/g, "/");
+        var code = "try { $.evalFile(" + JSON.stringify(ext + "/host.jsx") + "); 'loaded' } catch (e) { 'loaderr|' + e.message + '|' + e.line }";
+        cep.evalScript(code, function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "loaderr") setStatus("Photoshop 端程式載入失敗：" + p[1] + "（第 " + p[2] + " 行），請截圖給 Claude");
+          else if (res !== "loaded") setStatus("Photoshop 端程式載入結果：" + res + "，請截圖給 Claude");
+        });
+      } catch (e) {}
+    })();
+
+    // 讓面板關掉時只是隱藏、不卸載，下次打開不用重新載入（減少開關時卡頓）
+    try {
+      cep.dispatchEvent({
+        type: "com.adobe.PhotoshopPersistent", scope: "APPLICATION",
+        appId: "PHXS", extensionId: cep.getExtensionId(), data: ""
+      });
+    } catch (e) {}
+    var $ = function (id) { return document.getElementById(id); };
+    var setStatus = function (m) {
+      m = String(m);
+      if (m.indexOf("EvalScript error") >= 0) m = "出錯了：Photoshop 端的程式沒有載入成功（EvalScript error），請截圖給 Claude";
+      var el = $("status");
+      el.textContent = m;
+      el.className = "flash";
+      setTimeout(function () { el.className = ""; }, 400);
+    };
+
+    // 跟著 PS 介面顏色
+    try {
+      var c = JSON.parse(cep.getHostEnvironment()).appSkinInfo.panelBackgroundColor.color;
+      document.documentElement.style.setProperty("--bg", "rgb(" + [c.red, c.green, c.blue].map(Math.round) + ")");
+      if (c.red > 150) document.documentElement.style.setProperty("--fg", "#222");
+    } catch (e) {}
+
+    function run(prefix) {
+      var custom = $("custom").value;
+      var script = "abrRename(" + JSON.stringify(prefix) + "," + $("replace").checked + "," + JSON.stringify(custom) + ")";
+      setStatus("處理中…");
+      cep.evalScript(script, function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "ok") setStatus("完成：改了 " + p[1] + " / " + p[2] + " 個工作區域");
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "notarget") setStatus("沒有選取圖層，文件裡也沒有工作區域");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    }
+
+    // 跟動態小工具的關鍵字一致：同一組的同義字都算
+    var SYN = {
+      main: ["飄浮", "漂浮", "浮動", "飄", "漂", "浮", "搖", "擺", "晃", "亮光", "閃"],
+      "呼吸": ["縮放", "呼吸", "放大"],
+      "流光": ["流光", "光澤"],
+      "逐格": ["逐格"]
+    };
+    var motions = document.querySelectorAll("button.motion");
+    for (var i = 0; i < motions.length; i++) {
+      motions[i].addEventListener("click", function () {
+        var op = this.getAttribute("data-op"), word = this.getAttribute("data-word");
+        var syn = op === "main" ? SYN.main : SYN[word];
+        setStatus("處理中…");
+        cep.evalScript("abrMotion(" + JSON.stringify(op) + "," + JSON.stringify(word) + "," + JSON.stringify(syn) + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "motion") setStatus("完成：改了 " + p[1] + " / " + p[2] + " 個" + (p[3] ? "，例：" + p[3] : ""));
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else if (p[1] === "notarget") setStatus("沒有選取圖層，文件裡也沒有工作區域");
+          else setStatus("出錯了：" + (p[1] || res));
+        });
+      });
+    }
+    $("btnCustom").addEventListener("click", function () {
+      if (!$("custom").value) { setStatus("請先輸入自訂前綴"); return; }
+      run($("custom").value);
+    });
+    $("btnRemove").addEventListener("click", function () { run(null); });
+
+    var fonts = document.querySelectorAll("button.font");
+    for (var f = 0; f < fonts.length; f++) {
+      fonts[f].addEventListener("click", function () {
+        var font = this.getAttribute("data-font"), tr = +this.getAttribute("data-tracking");
+        setStatus("處理中…");
+        cep.evalScript("abrSetFont(" + JSON.stringify(font) + "," + tr + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "font") setStatus("完成：套用到 " + p[1] + " 個文字圖層" + (+p[2] ? "（" + p[2] + " 個失敗，可能被鎖定）" : ""));
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else if (p[1] === "nosel") setStatus("請先選取文字圖層");
+          else setStatus("出錯了：" + (p[1] || res));
+        });
+      });
+    }
+
+    var lineBtns = document.querySelectorAll("button.lineart");
+    for (var lb = 0; lb < lineBtns.length; lb++) {
+      lineBtns[lb].addEventListener("click", function () {
+        var fill = this.getAttribute("data-fill");
+        var bk = parseFloat($("laBlack").value), wt = parseFloat($("laWhite").value);
+        if (!(bk >= 0 && wt <= 255 && wt > bk + 1)) { setStatus("對比的兩個數字要在 0～255 之間，而且左邊比右邊小"); return; }
+        setStatus("去背中…");
+        var call = fill === "fg"
+          ? "abrLineArt(" + bk + "," + wt + ",app.foregroundColor.rgb.hexValue)"
+          : "abrLineArt(" + bk + "," + wt + "," + JSON.stringify(fill) + ")";
+        cep.evalScript(call, function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "lineart") setStatus("完成：新圖層「" + p[1] + "」，原圖已隱藏。邊緣太粗或有殘留就改對比數字，Ctrl+Z 再按一次");
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else if (p[1] === "notrgb") setStatus("文件要是 RGB 模式");
+          else if (p[1] === "smart") setStatus("智慧型物件請先「點陣化圖層」再去背");
+          else if (p[1] === "notpixel") setStatus("請選一般的圖片圖層（不能是群組、文字或形狀）");
+          else setStatus("出錯了：" + (p.slice(1).join("|") || res));
+        });
+      });
+    }
+
+    $("btnUnlockAll").addEventListener("click", function () {
+      setStatus("處理中…");
+      cep.evalScript("abrUnlockAll()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "unlock") setStatus(+p[1] ? "完成：解除了 " + p[1] + " 個圖層的鎖定" + (+p[2] ? "（" + p[2] + " 個失敗）" : "") : "這份文件沒有鎖定的圖層");
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else setStatus("出錯了：" + (p.slice(1).join("|") || res));
+      });
+    });
+
+    $("btnUngroup").addEventListener("click", function () {
+      setStatus("處理中…");
+      cep.evalScript("abrUngroup()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "ungroup") setStatus(+p[1] ? "完成：解散了 " + p[1] + " 個群組" + (+p[2] ? "（" + p[2] + " 個不是群組或是工作區域，跳過）" : "") : "選取的不是群組");
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "nosel") setStatus("請先選取要解散的群組");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    var clipBtns = document.querySelectorAll("button.clipso");
+    for (var cb = 0; cb < clipBtns.length; cb++) {
+      clipBtns[cb].addEventListener("click", function () {
+        var all = this.getAttribute("data-all") === "true";
+        setStatus(all ? "搜尋整份文件中…" : "處理中…");
+        cep.evalScript("abrClipToSmartObject(" + all + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "clipso") setStatus(+p[1] ? "完成：轉了 " + p[1] + " 組智慧型物件" + (+p[2] ? "（" + p[2] + " 個沒有剪裁遮色片，跳過）" : "") : (all ? "這份文件沒有剪裁遮色片" : "選取的圖層沒有剪裁遮色片"));
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else if (p[1] === "nosel") setStatus("請先選取剪裁遮色片或底下那層");
+          else setStatus("出錯了：" + (p[1] || res));
+        });
+      });
+    }
+
+    $("btnPDF").addEventListener("click", function () {
+      setStatus("輸出 PDF 中…（大檔會久一點）");
+      cep.evalScript("abrExportPDF()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "pdf") setStatus("完成：已存成 " + p[1] + "，PSD 已還原成平面化前");
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "cancel") setStatus("已取消");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    // 動畫效果：k＝程式用的名字，w＝寫在圖層名稱上的字，d＝預設幅度
+    var FX = [
+      { k: "float", w: "飄浮", d: 12 }, { k: "sway", w: "晃動", d: 12 }, { k: "scale", w: "放大", d: 6 },
+      { k: "blink", w: "閃爍", d: 50 }, { k: "rotate", w: "旋轉", d: 6 }, { k: "bounce", w: "跳", d: 15 },
+      { k: "glow", w: "發光", d: 20 }, { k: "chasescale", w: "輪流放大", d: 8 }, { k: "chase", w: "輪流", d: 60 }, { k: "sweep", w: "流光", d: 0 }
+    ];
+    function fxOf(kind) { for (var i = 0; i < FX.length; i++) if (FX[i].k === kind) return FX[i]; }
+
+    // 用 ffmpeg 把 f1.png、f2.png… 合成 GIF（Photoshop 2020 腳本做不了影格動畫）；done(錯誤訊息或 null, KB)
+    function makeGIF(dir, out, delay, done) {
+      var cp, fs, path;
+      try { cp = require("child_process"); fs = require("fs"); path = require("path"); }
+      catch (e) { done("面板無法執行外部程式，請完全重開 Photoshop 再試"); return; }
+      var cands = [path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Links", "ffmpeg.exe"), "ffmpeg"];
+      var ff = cands[0] && fs.existsSync(cands[0]) ? cands[0] : cands[1];
+      var args = ["-y", "-framerate", String(1 / delay), "-i", path.join(dir, "f%d.png"),
+        "-filter_complex", "split[a][b];[a]palettegen=reserve_transparent=1[p];[b][p]paletteuse=dither=sierra2_4a",
+        "-loop", "0", out];
+      cp.execFile(ff, args, { windowsHide: true }, function (err, so, se) {
+        if (err) { done("ffmpeg 合成失敗 " + String(se || err.message).slice(-160)); return; }
+        done(null, Math.round(fs.statSync(out).size / 1024));
+      });
+    }
+
+    // ① 效果按鈕：只在圖層名稱上標記（例如「動-飄浮12 主標」），可疊多個，同一個再按＝取消
+    var anims = document.querySelectorAll("button.anim");
+    for (var an = 0; an < anims.length; an++) {
+      anims[an].addEventListener("click", function () {
+        var f = fxOf(this.getAttribute("data-kind"));
+        var amt = parseFloat($("animAmount").value);
+        var token = f.w + (f.k === "sweep" ? "" : String(isNaN(amt) ? f.d : amt));
+        cep.evalScript("abrMotion(\"set\"," + JSON.stringify(token) + "," + JSON.stringify([f.w]) + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "motion") setStatus("已標記「" + token + "」" + (p[3] ? "，例：" + p[3] : "（再按一次同樣的＝取消）") + "。全部設好再按「一鍵輸出」");
+          else if (p[1] === "notarget") setStatus("請先選取要動的圖層");
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else setStatus("出錯了：" + (p.slice(1).join("|") || res));
+        });
+      });
+    }
+
+    // ② 一鍵輸出：Photoshop 存好每段的圖，再逐段用 ffmpeg 合成 GIF
+    $("btnExportAll").addEventListener("click", function () { exportRun(false); });
+    $("btnExportOne").addEventListener("click", function () { exportRun(true); });
+    // onlySel＝true：只輸出選取圖層所在的那段
+    function exportRun(onlySel) {
+      var frames = +$("animFrames").value, delay = parseFloat($("animDelay").value);
+      if (!(delay > 0)) { setStatus("每格秒數要大於 0"); return; }
+      setStatus("輸出中…（畫面會一直閃，正常；段數多會比較久）");
+      cep.evalScript("abrExportAll(" + JSON.stringify(FX) + "," + frames + "," + delay + "," + onlySel + ")", function (res) {
+        var lines = String(res).split("\n"), head = lines[0].split("|");
+        if (head[0] !== "all") {
+          setStatus(head[1] === "nodoc" ? "沒有開啟的文件" : head[1] === "nosel" ? "請先選取要輸出那段裡的圖層" : "出錯了：" + (head.slice(1).join("|") || res));
+          return;
+        }
+        var pngs = +head[1], folder = head[2], jobs = lines.slice(1).filter(Boolean), done = 0, big = 0, errs = [];
+        function next() {
+          if (!jobs.length) {
+            setStatus("完成：" + done + " 張 GIF＋" + pngs + " 張 PNG，存在 " + folder + (big ? "（" + big + " 張 GIF 超過 3MB）" : "") + (errs.length ? "；失敗：" + errs.join("、") : ""));
+            return;
+          }
+          var j = jobs.shift().split("|");
+          setStatus("合成 GIF 中…（剩 " + (jobs.length + 1) + " 張）");
+          makeGIF(j[0], j[1], +j[4], function (err, kb) {
+            if (err) errs.push(err); else { done++; if (kb > 3072) big++; }
+            next();
+          });
+        }
+        next();
+      });
+    }
+
+    $("btnGIF").addEventListener("click", function () {
+      var sec = parseFloat($("gifDelay").value);
+      if (!(sec > 0)) { setStatus("每格秒數要大於 0"); return; }
+      setStatus("做 GIF 中…");
+      cep.evalScript("abrFrameGIF(" + sec + ")", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "gif") {
+          var kb = +p[3], size = kb >= 1024 ? (kb / 1024).toFixed(1) + "MB" : kb + "KB";
+          setStatus("完成：" + p[2] + " 格、" + p[4] + "、" + size + (kb > 3072 ? "（超過 3MB！）" : "") + "，存在 " + p[1]);
+        }
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "needtwo") setStatus("請至少選 2 個圖層或群組（一層一格）");
+        else setStatus("出錯了：" + (p.slice(1).join("|") || res));
+      });
+    });
+
+    $("btnLayersPNG").addEventListener("click", function () {
+      setStatus("輸出圖層 PNG 中…（一層一層存，層數多會久一點）");
+      cep.evalScript("abrExportLayersPNG()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "layerspng") setStatus("完成：存了 " + p[1] + " 張到「下載」：" + p[3] + (+p[2] ? "（" + p[2] + " 個失敗）" : ""));
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "nosel") setStatus("請先選取要輸出的圖層");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    $("btnPNG").addEventListener("click", function () {
+      setStatus("輸出 PNG 中…（大檔會久一點）");
+      cep.evalScript("abrExportPNG()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "png") setStatus("完成：已存成 " + p[1]);
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "cancel") setStatus("已取消");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    var slices = document.querySelectorAll("button.slice");
+    for (var sl = 0; sl < slices.length; sl++) {
+      slices[sl].addEventListener("click", function () {
+        var fmt = this.getAttribute("data-fmt");
+        setStatus("依參考線切圖中…（段數多會久一點）");
+        cep.evalScript("abrSliceExport(" + JSON.stringify(fmt) + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "slice") setStatus("完成：切成 " + p[1] + " 張" + (+p[2] ? "（" + p[2] + " 段是空白，跳過）" : "") + "，存在 " + p[3]);
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else if (p[1] === "noguides") setStatus("這份文件沒有水平參考線，請先拉參考線");
+          else setStatus("出錯了：" + (p.slice(1).join("|") || res));
+        });
+      });
+    }
+
+    $("btnBleed").addEventListener("click", function () {
+      setStatus("處理中…");
+      cep.evalScript("abrAddBleed(3)", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "bleed") setStatus("完成：四邊各加 " + p[1] + "px（3mm @ " + p[4] + "ppi），畫布變成 " + p[2] + "×" + p[3]);
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    // ---- 陰影預設：存在 %APPDATA%\PeppaTools\presets.json ----
+    var DEFAULT_SHADOWS = [{ name: "常用陰影", mode: "multiply", r: 0, g: 0, b: 0, opacity: 35, angle: 90, distance: 3, spread: 0, size: 7 }];
+    var presets = { shadows: DEFAULT_SHADOWS };
+    function savePresets() { cep.evalScript("abrWritePresets(" + JSON.stringify(JSON.stringify(presets)) + ")"); }
+    function renderShadows() {
+      var box = $("shadowList"); box.innerHTML = "";
+      presets.shadows.forEach(function (s, idx) {
+        var b = document.createElement("button");
+        b.className = "cta"; b.textContent = s.name;
+        b.title = "不透明 " + s.opacity + "%、角度 " + s.angle + "°、間距 " + s.distance + "、展開 " + s.spread + "、尺寸 " + s.size + "（右鍵刪除）";
+        b.addEventListener("click", function () {
+          setStatus("處理中…");
+          cep.evalScript("abrApplyShadow(" + [JSON.stringify(s.mode), s.r, s.g, s.b, s.opacity, s.angle, s.distance, s.spread, s.size].join(",") + ")", function (res) {
+            setStatus(eachMsg(String(res).split("|"), "圖層套用「" + s.name + "」"));
+          });
+        });
+        b.addEventListener("contextmenu", function (e) {
+          e.preventDefault();
+          if (!confirm("刪除陰影預設「" + s.name + "」？")) return;
+          presets.shadows.splice(idx, 1); savePresets(); renderShadows();
+        });
+        box.appendChild(b);
+      });
+    }
+    cep.evalScript("abrReadPresets()", function (res) {
+      try { var p = JSON.parse(res); if (p && p.shadows) presets = p; } catch (e) {}
+      renderShadows();
+    });
+    $("btnShadowSave").addEventListener("click", function () {
+      var name = $("shadowName").value.trim();
+      if (!name) { setStatus("請先輸入預設名稱"); return; }
+      cep.evalScript("abrReadShadow()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] !== "shadow") { setStatus(p[1] === "noshadow" ? "選取的圖層沒有陰影" : "出錯了：" + (p[1] || res)); return; }
+        var s = { name: name, mode: p[1], r: +p[2], g: +p[3], b: +p[4], opacity: +p[5], angle: +p[6], distance: +p[7], spread: +p[8], size: +p[9] };
+        presets.shadows = presets.shadows.filter(function (x) { return x.name !== name; }).concat([s]);
+        savePresets(); renderShadows(); setStatus("已存陰影預設「" + name + "」");
+      });
+    });
+
+    // ---- 常用圖層庫 ----
+    function renderLib() {
+      cep.evalScript("abrLibList()", function (res) {
+        var box = $("libList"); box.innerHTML = "";
+        if (String(res).indexOf("lib|") !== 0) { setStatus("常用圖層讀取失敗：" + res); return; }
+        var names = String(res).replace(/^lib\|/, "").split("\n").filter(Boolean);
+        names.forEach(function (n) {
+          var b = document.createElement("button");
+          b.textContent = n; b.title = "放入「" + n + "」（右鍵刪除）";
+          b.addEventListener("click", function () {
+            setStatus("放入中…");
+            cep.evalScript("abrLibInsert(" + JSON.stringify(n) + ")", function (r) {
+              var p = String(r).split("|");
+              setStatus(p[0] === "libinserted" ? "已放入「" + n + "」" : p[1] === "nodoc" ? "沒有開啟的文件" : "出錯了：" + (p[1] || r));
+            });
+          });
+          b.addEventListener("contextmenu", function (e) {
+            e.preventDefault();
+            if (!confirm("刪除常用圖層「" + n + "」？")) return;
+            cep.evalScript("abrLibDelete(" + JSON.stringify(n) + ")", renderLib);
+          });
+          box.appendChild(b);
+        });
+      });
+    }
+    renderLib();
+    $("btnLibSave").addEventListener("click", function () {
+      var name = $("libName").value.trim();
+      if (!name) { setStatus("請先輸入名稱"); return; }
+      setStatus("存入中…");
+      cep.evalScript("abrLibSave(" + JSON.stringify(name) + ")", function (r) {
+        var p = String(r).split("|");
+        if (p[0] === "libsaved") { setStatus("已存入常用圖層「" + p[1] + "」"); renderLib(); }
+        else setStatus(p[1] === "nosel" ? "請先選取圖層" : p[1] === "nodoc" ? "沒有開啟的文件" : "出錯了：" + (p[1] || r));
+      });
+    });
+    $("btnLibFolder").addEventListener("click", function () { cep.evalScript("abrLibOpenFolder()"); });
+
+    var rects = document.querySelectorAll("button.addrect");
+    for (var ar = 0; ar < rects.length; ar++) {
+      rects[ar].addEventListener("click", function () {
+        var w = +this.getAttribute("data-w"), h = +this.getAttribute("data-h");
+        setStatus("處理中…");
+        cep.evalScript("abrAddRect(" + w + "," + h + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "rect") setStatus("已新增 " + p[1] + "×" + p[2] + " 矩形");
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else setStatus("出錯了：" + (p[1] || res));
+        });
+      });
+    }
+
+    $("btnFindSF").addEventListener("click", function () {
+      setStatus("搜尋中…");
+      cep.evalScript("abrFindSmartFilters()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "found") setStatus(+p[1] ? "找到並選取 " + p[1] + " 個：" + p[2] : "這份文件沒有套智慧型濾鏡的圖層");
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    $("btnFromRect").addEventListener("click", function () {
+      setStatus("處理中…");
+      cep.evalScript("abrArtboardsFromRects()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "fromrect") setStatus("完成：建立了 " + p[1] + " 個工作區域" + (+p[2] ? "（" + p[2] + " 個跳過）" : ""));
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "nosel") setStatus("請先選取矩形圖層");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    $("btnNumber").addEventListener("click", function () {
+      setStatus("處理中…");
+      cep.evalScript("abrNumberArtboards()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "num") setStatus("完成：" + p[2] + " 個工作區域已依序編號");
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "notarget") setStatus("沒有找到工作區域");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    $("btnSize").addEventListener("click", function () {
+      setStatus("處理中…");
+      cep.evalScript("abrAddSize()", function (res) {
+        var p = String(res).split("|");
+        if (p[0] === "size") setStatus("完成：" + p[1] + " 個工作區域加上尺寸" + (+p[2] ? "（" + p[2] + " 個不是工作區域，跳過）" : ""));
+        else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+        else if (p[1] === "notarget") setStatus("沒有選取圖層，文件裡也沒有工作區域");
+        else setStatus("出錯了：" + (p[1] || res));
+      });
+    });
+
+    function eachMsg(p, what) {
+      if (p[0] === "each") return "完成：" + p[1] + " 個" + what + (+p[2] ? "（" + p[2] + " 個失敗，可能被鎖定）" : "");
+      if (p[1] === "nodoc") return "沒有開啟的文件";
+      if (p[1] === "nosel") return "請先選取圖層";
+      if (p[1] === "cancel") return "已取消";
+      return "出錯了：" + (p[1] || p.join("|"));
+    }
+
+    var justs = document.querySelectorAll("button.justify");
+    for (var q = 0; q < justs.length; q++) {
+      justs[q].addEventListener("click", function () {
+        var j = this.getAttribute("data-j"), label = this.textContent;
+        setStatus("處理中…");
+        cep.evalScript("abrSetJustify(" + JSON.stringify(j) + ")", function (res) {
+          setStatus(eachMsg(String(res).split("|"), "文字圖層改成" + label));
+        });
+      });
+    }
+
+    // 色碼欄：接受 #7556A8 / 7556a8 / 75A 這些寫法，回傳 6 碼大寫；不合法回傳 null
+    function readHex(btn) {
+      var id = btn.getAttribute("data-hexinput");
+      if (!id) return btn.getAttribute("data-hex") || "";
+      var v = $(id).value.replace(/[#\s]/g, "");
+      if (/^[0-9a-fA-F]{3}$/.test(v)) v = v.replace(/(.)/g, "$1$1");
+      return /^[0-9a-fA-F]{6}$/.test(v) ? v.toUpperCase() : null;
+    }
+    // 在色碼欄按 Enter 就等於按旁邊的「套用色碼」
+    var hexInputs = document.querySelectorAll("button[data-hexinput]");
+    for (var h = 0; h < hexInputs.length; h++) {
+      (function (btn) {
+        $(btn.getAttribute("data-hexinput")).addEventListener("keydown", function (e) {
+          if (e.key === "Enter") btn.click();
+        });
+      })(hexInputs[h]);
+    }
+
+    var colors = document.querySelectorAll("button.color");
+    for (var c = 0; c < colors.length; c++) {
+      colors[c].addEventListener("click", function () {
+        var mode = this.getAttribute("data-mode"), hex = readHex(this);
+        if (hex === null) { setStatus("色碼要是 6 碼（例如 7556A8）或 3 碼"); return; }
+        setStatus(mode === "pick" ? "在檢色器裡把游標移到畫面上點一下就能吸色…" : "處理中…");
+        cep.evalScript("abrSetColor(" + JSON.stringify(mode) + "," + JSON.stringify(hex) + ")", function (res) {
+          var p = String(res).split("|");
+          setStatus(eachMsg(p, "圖層改成 #" + (p[3] || hex)));
+        });
+      });
+    }
+
+    var strokes = document.querySelectorAll("button.stroke");
+    for (var s = 0; s < strokes.length; s++) {
+      strokes[s].addEventListener("click", function () {
+        var mode = this.getAttribute("data-mode"), hex = readHex(this);
+        if (hex === null) { setStatus("色碼要是 6 碼（例如 7556A8）或 3 碼"); return; }
+        var px = parseFloat($("strokeSize").value);
+        if (!(px > 0)) { setStatus("筆畫粗細要大於 0"); return; }
+        setStatus(mode === "pick" ? "在檢色器裡把游標移到畫面上點一下就能吸色…" : "處理中…");
+        cep.evalScript("abrAddStroke(" + JSON.stringify(mode) + "," + JSON.stringify(hex) + "," + px + ")", function (res) {
+          var p = String(res).split("|");
+          setStatus(eachMsg(p, "圖層加上 " + px + "px 筆畫 #" + (p[3] || hex)));
+        });
+      });
+    }
+
+    var steps = document.querySelectorAll("button.stepscale");
+    for (var st = 0; st < steps.length; st++) {
+      steps[st].addEventListener("click", function () {
+        cep.evalScript("abrStepScale(" + (+this.getAttribute("data-d")) + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "stepscale") setStatus("完成：" + p[1] + " 個圖層，現在是原尺寸的 " + p[2] + "%");
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else if (p[1] === "nosel") setStatus("請先選取圖層");
+          else setStatus("出錯了：" + (p.slice(1).join("|") || res));
+        });
+      });
+    }
+
+    var radii = document.querySelectorAll("button.radius");
+    for (var r = 0; r < radii.length; r++) {
+      radii[r].addEventListener("click", function () {
+        var px = +this.getAttribute("data-r"), add = this.getAttribute("data-add") === "1";
+        setStatus("處理中…");
+        cep.evalScript("abrSetRadius(" + px + "," + add + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "radius") setStatus("完成：" + p[1] + " 個形狀，目前圓角 " + p[3] + (+p[2] ? "（" + p[2] + " 個失敗，可能不是矩形）" : ""));
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else if (p[1] === "nosel") setStatus("請先選取形狀圖層");
+          else setStatus("出錯了：" + (p[1] || res));
+        });
+      });
+    }
+
+    var adds = document.querySelectorAll("button.add");
+    for (var j = 0; j < adds.length; j++) {
+      adds[j].addEventListener("click", function () {
+        var w = +this.getAttribute("data-w"), h = +this.getAttribute("data-h"), name = this.getAttribute("data-name");
+        setStatus("處理中…");
+        cep.evalScript("abrAddArtboard(" + w + "," + h + "," + JSON.stringify(name) + ")", function (res) {
+          var p = String(res).split("|");
+          if (p[0] === "added") setStatus("已新增 " + p[1] + "×" + p[2] + " 工作區域");
+          else if (p[1] === "nodoc") setStatus("沒有開啟的文件");
+          else setStatus("出錯了：" + (p[1] || res));
+        });
+      });
+    }
+  </script>
+</body>
+</html>

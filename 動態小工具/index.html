@@ -1,0 +1,2178 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>動態小工具</title>
+<link rel="icon" href="/icon.png">
+<style>
+  /* 灰黑極簡（照 Photoshop 的深色介面）*/
+  :root {
+    --bg: #1c1c1e; --panel: #262628; --panel2: #2e2e31; --field: #1f1f21; --line: #38383b; --line2: #48484c;
+    --text: #e4e4e6; --mute: #8d8d93; --dim: #5f5f65;
+    --accent: #4c8dff; --accent-soft: rgba(76,141,255,.16); --ok: #5cc28a; --warn: #e3a64b;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 12.5px/1.5 "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #3d3d41; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: #4d4d52; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+
+  header { display: flex; gap: 6px; align-items: center; height: 40px; padding: 0 10px; background: var(--panel); border-bottom: 1px solid var(--line); flex: none; }
+  header h1 { font-size: 13px; font-weight: 600; margin: 0 10px 0 2px; letter-spacing: .5px; color: #fff; }
+  header input[type=text] { flex: 1; min-width: 120px; }
+
+  button { font: inherit; padding: 4px 11px; border: 1px solid var(--line2); background: var(--panel2); color: var(--text); border-radius: 5px; cursor: pointer; }
+  button:hover { border-color: #66666c; background: #343438; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: #5d99ff; }
+  button:disabled { opacity: .4; cursor: default; }
+  input[type=text], input[type=number], select { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--field); color: var(--text); }
+  input[type=text]:focus, input[type=number]:focus, select:focus { outline: none; border-color: var(--accent); }
+  input[type=number] { width: 64px; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  input[type=range] { accent-color: var(--accent); }
+  input[type=color] { background: none; border: 1px solid var(--line2); border-radius: 4px; }
+
+  main { flex: 1; display: grid; grid-template-columns: 210px 1fr 320px; min-height: 0; }
+  aside, section { overflow: auto; }
+  .phead { display: flex; justify-content: space-between; align-items: center; gap: 6px; height: 30px; padding: 0 10px; flex: none;
+      border-bottom: 1px solid var(--line); color: var(--mute); font-size: 11.5px; letter-spacing: .3px; background: var(--panel); }
+  .phead b { color: var(--text); font-weight: 600; }
+
+  /* 左：畫板 */
+  #list { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
+  #scenes { flex: 1; overflow: auto; }
+  .scene { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; align-items: flex-start; border-left: 2px solid transparent; }
+  .scene:hover { background: var(--panel2); }
+  .scene.active { background: var(--accent-soft); border-left-color: var(--accent); }
+  .scene .t { font-weight: 600; word-break: break-all; }
+  .scene .s { color: var(--mute); font-size: 11.5px; }
+  .scene .done { color: var(--ok); font-size: 11.5px; }
+  .scene .x { border: none; background: none; color: var(--mute); padding: 0 4px; font-size: 13px; }
+  .scene .x:hover { color: #fff; background: none; }
+  .empty { padding: 30px 16px; color: var(--mute); text-align: center; }
+
+  /* 中：畫面 */
+  #stage { display: flex; flex-direction: column; min-width: 0; padding: 0; gap: 0; background: var(--bg); overflow: hidden; }
+  #viewWrap { flex: 1; min-height: 200px; position: relative; }
+  #ruler { position: absolute; top: 0; left: 0; right: 0; height: 20px; width: 100%; cursor: s-resize; background: var(--panel); border-bottom: 1px solid var(--line); }
+  /* margin:auto (not align/justify center) so a zoomed-in canvas can still scroll to its top/left edge */
+  #view { position: absolute; inset: 20px 0 0 0; display: flex; overflow: auto; padding: 24px; background: #161618; }
+  #view canvas { margin: auto; flex: none; max-width: 100%; max-height: 100%; box-shadow: 0 0 0 1px #000, 0 6px 24px rgba(0,0,0,.5); cursor: default;
+      background: repeating-conic-gradient(#d9d9d9 0 25%, #f2f2f2 0 50%) 0 0/16px 16px; }
+  #ztools { position: absolute; top: 28px; right: 12px; display: flex; gap: 1px; align-items: center; background: rgba(38,38,40,.94);
+      border: 1px solid var(--line2); border-radius: 6px; padding: 2px; z-index: 2; }
+  #ztools button { padding: 2px 8px; border: none; background: none; border-radius: 4px; }
+  #ztools button:hover, #ztools button.on { background: var(--accent-soft); color: #fff; }
+  #zPct { min-width: 44px; text-align: center; color: var(--mute); font-size: 11.5px; }
+  .bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--panel); border-top: 1px solid var(--line); flex: none; }
+  .bar input[type=range] { flex: 1; }
+  #time { color: var(--mute); font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; }
+  /* fixed height: the preview must not move while guides are being placed */
+  #slices { background: var(--panel); border-top: 1px solid var(--line); padding: 6px 12px; display: flex; gap: 10px; align-items: flex-start; height: 76px; flex: none; overflow: auto; }
+  #slices .hint { color: var(--mute); flex: 1; }
+  #slices .seg { display: flex; gap: 6px; align-items: center; white-space: nowrap; padding: 1px 0; color: var(--text); }
+  #slices .seg select { padding: 1px 4px; }
+  #layers { background: var(--panel); border-top: 1px solid var(--line); padding: 6px 12px; height: 26%; min-height: 90px; overflow: auto; flex: none; }
+  #layers .row { display: flex; gap: 8px; padding: 2px 0; align-items: center; }
+  #layers .row.muted .nm { color: var(--mute); text-decoration: line-through; }
+  #layers .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #layers .rowbtn { padding: 0 8px; font-size: 11.5px; }
+  #layers .rules { color: var(--mute); font-size: 11.5px; }
+  .tag { display: inline-block; padding: 0 7px; border-radius: 3px; background: var(--accent-soft); color: #9cc0ff; font-size: 11.5px; margin-right: 3px; }
+  button.tag { border: 1px solid transparent; font: inherit; font-size: 11.5px; cursor: pointer; }
+  button.tag:hover { border-color: var(--accent); background: var(--accent-soft); }
+  button.tag.off { background: #303033; color: var(--dim); text-decoration: line-through; }
+  input.ord { width: 52px; padding: 1px 4px; font-size: 11.5px; }
+  label.solo { font-size: 11.5px; color: var(--mute); white-space: nowrap; display: inline-flex; align-items: center; gap: 2px; }
+  .seq { font-size: 11.5px; color: #c9b8ff; background: rgba(150,120,255,.15); border-radius: 3px; padding: 0 6px; white-space: nowrap; }
+  .warn { color: var(--warn); }
+
+  /* 右：內容＋分頁（圖層／動態設定／輸出）*/
+  #dock { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
+  #fxEdit { flex: none; max-height: 38%; overflow: auto; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  #fxEdit .edname { font-weight: 600; margin-bottom: 6px; word-break: break-all; color: #fff; }
+  #fxEdit .edrow { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  #fxEdit .rules { color: var(--mute); font-size: 11.5px; }
+  .chip { padding: 2px 10px; border-radius: 3px; font-size: 11.5px; }
+  .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tabs { display: flex; flex: none; height: 30px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; border: none; border-radius: 0; background: none; color: var(--mute); font-size: 12px; border-bottom: 2px solid transparent; }
+  .tabs button:hover { color: var(--text); background: none; }
+  .tabs button.on { color: #fff; background: var(--panel); border-bottom-color: var(--accent); }
+  .pane { flex: 1; overflow: auto; min-height: 0; }
+  #settings, #outPane { padding: 8px 10px; }
+
+  /* 圖層清單 */
+  #tree { padding: 4px 0 8px; }
+  .lyr { display: flex; gap: 6px; align-items: center; height: 26px; padding: 0 8px; cursor: pointer; border-left: 2px solid transparent; }
+  .lyr:hover { background: var(--panel2); }
+  .lyr.sel { background: var(--accent-soft); border-left-color: var(--accent); }
+  .lyr.dis { color: var(--dim); cursor: default; }
+  .lyr .ic { width: 16px; text-align: center; font-size: 11px; color: var(--mute); flex: none; }
+  .lyr .ln { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lyr .dot { color: var(--accent); font-size: 10px; }
+  .lyr .tw { width: 12px; flex: none; text-align: center; color: var(--mute); font-size: 10px; cursor: pointer; }
+  .lyr.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+  .lyr.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
+  .lyr.drop-into { background: var(--accent-soft); outline: 1px dashed var(--accent); }
+  .lyr input.rn { flex: 1; min-width: 0; font: inherit; padding: 0 4px; }
+  .lyr .del { flex: none; border: none; background: none; padding: 0 4px; font-size: 11px; color: var(--mute); visibility: hidden; }
+  .lyr:hover .del, .lyr.gone .del { visibility: visible; }
+  .lyr .del:hover { color: #fff; background: none; }
+  .lyr .eye { flex: none; border: none; background: none; padding: 0 4px; font-size: 11px; color: var(--mute); }
+  .lyr .eye:hover { color: #fff; background: none; }
+  .lyr.pshid .ln { color: var(--dim); font-style: italic; }
+  .lyr.gone .ln { text-decoration: line-through; color: var(--dim); }
+  .lyr .gonetag { font-size: 11px; color: var(--mute); flex: none; }
+
+  /* 右鍵選單 */
+  #ctx { position: fixed; z-index: 30; background: #2c2c2f; border: 1px solid var(--line2); border-radius: 6px; padding: 4px 0;
+      box-shadow: 0 8px 24px rgba(0,0,0,.45); min-width: 190px; font-size: 12.5px; }
+  #ctx div { display: flex; justify-content: space-between; gap: 18px; padding: 5px 14px; cursor: pointer; }
+  #ctx div:hover { background: var(--accent); color: #fff; }
+  #ctx div:hover kbd { color: #e6eeff; }
+  #ctx div.off { color: var(--dim); cursor: default; background: none; }
+  #ctx kbd { color: var(--mute); font: inherit; font-size: 11px; }
+  #ctx hr { border: none; border-top: 1px solid var(--line2); margin: 4px 0; }
+
+  /* 設定 */
+  fieldset { border: none; border-bottom: 1px solid var(--line); border-radius: 0; margin: 0; padding: 4px 0 10px; }
+  legend { font-weight: 600; padding: 8px 0 4px; color: #fff; font-size: 12px; float: left; width: 100%; }
+  fieldset > * { clear: both; }
+  .grid { display: grid; grid-template-columns: 1fr auto; gap: 5px 8px; align-items: center; }
+  .grid label { color: var(--mute); }
+  .rules { color: var(--mute); font-size: 11.5px; }
+  .tplrow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 8px; font-size: 11.5px; color: var(--mute); }
+  .tplrow select { max-width: 140px; }
+  .tplrow button { padding: 2px 8px; font-size: 11.5px; }
+  #log { font-size: 11.5px; margin-top: 8px; }
+  #log div { padding: 3px 0; border-bottom: 1px solid var(--line); word-break: break-all; }
+  #log a { color: var(--accent); cursor: pointer; }
+  progress { width: 100%; accent-color: var(--accent); }
+  .palrow { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; font-size: 11.5px; }
+  .palrow input[type=color] { width: 28px; height: 22px; padding: 0; }
+  #huePal button { font-size: 11.5px; padding: 1px 8px; }
+
+  #drop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+      background: rgba(76,141,255,.12); border: 3px dashed var(--accent); font-size: 20px; font-weight: 600; color: #fff; pointer-events: none; }
+  [hidden] { display: none !important; }   /* a display:flex rule must never beat the hidden attribute (#drop stayed pink) */
+</style>
+</head>
+<body>
+<header>
+  <h1>動態小工具</h1>
+  <div id="drop" hidden>放開就載入 PSD</div>
+  <div id="stale" hidden style="position:fixed;top:0;left:0;right:0;z-index:30;background:#c62828;color:#fff;padding:10px 16px;font-size:14px;font-weight:600;text-align:center">
+    小工具剛更新過：請關掉黑色視窗（工作列上的「動態小工具」），再點一次桌面捷徑。不重開的話，拖曳載入等新功能會失敗。</div>
+  <div id="standby" hidden style="position:fixed;bottom:0;left:0;right:0;z-index:29;background:#5d4037;color:#fff;padding:8px 16px;font-size:13px;text-align:center;cursor:pointer">
+    另一個分頁正在接 Claude 的指令，這個分頁的設定可能不是最新的。點這裡改由這個分頁接（或直接關掉這個分頁）。</div>
+  <div id="ctx" hidden></div>
+  <span id="toast" hidden style="position:fixed;top:52px;left:50%;transform:translateX(-50%);background:#3a3a3e;color:#fff;padding:5px 14px;border-radius:4px;z-index:9;box-shadow:0 4px 14px rgba(0,0,0,.4)"></span>
+  <button id="bFiles">選擇 PSD…</button>
+  <button id="bFolder">選擇資料夾…</button>
+  <input type="text" id="paths" placeholder="或貼上 PSD／資料夾路徑（多個用換行或 ; 分開），按 Enter 載入">
+  <button id="bLoad">載入</button>
+</header>
+<main>
+  <aside id="list">
+    <div class="phead"><b>畫板</b><span id="count">尚未載入</span><label><input type="checkbox" id="all" checked> 全選</label></div>
+    <div id="scenes"><div class="empty">把 PSD 拖進來，或按「選擇 PSD…」<br>每個畫板會變成一支影片</div></div>
+  </aside>
+  <section id="stage">
+    <div id="viewWrap">
+      <canvas id="ruler" title="尺標：按住往下拉，就會拉出一條參考線（切圖用）；參考線拉回尺標或拉出畫面就刪除"></canvas>
+      <div id="view"><canvas id="cv" width="10" height="10"></canvas></div>
+      <div id="ztools" title="Ctrl＋滾輪也可以縮放；滾輪上下捲動，Shift＋滾輪左右捲動">
+        <button id="zOut" title="縮小">－</button><span id="zPct">100%</span><button id="zIn" title="放大">＋</button>
+        <button id="zFit" title="整張放進畫面">整張</button><button id="zWidth" title="寬度塞滿，上下捲動看長圖">寬度</button><button id="z100" title="實際大小">100%</button>
+      </div>
+    </div>
+    <div class="bar">
+      <button id="bPlay">暫停</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0">
+      <span id="time">0.00 s</span>
+    </div>
+    <div id="slices"></div>
+    <div id="layers"></div>
+  </section>
+  <aside id="dock">
+    <div class="phead"><b>內容</b></div>
+    <div id="fxEdit"></div>
+    <div class="tabs"><button data-tab="treePane" class="on">圖層</button><button data-tab="settings">動態設定</button><button data-tab="outPane">輸出</button></div>
+    <div id="treePane" class="pane"><div id="tree"></div></div>
+    <div id="settings" class="pane" hidden>
+    <fieldset><legend>整體</legend><div id="cfgWhere" class="rules" style="font-size:12px;color:var(--mute);margin-bottom:4px"></div><div class="grid">
+      <label title="一鍵把每個特效的「每次動作秒數」套成一組常用值">節奏</label><select data-k="pace"><option value="slow">慢（×1.5）</option><option value="normal">標準</option><option value="fast">快（×0.7）</option><option value="">自訂</option></select>
+      <label>循環秒數</label><input type="number" data-k="loop" step="0.1" min="0.5">
+      <label title="依特效、次數、輪流的層數自動算；自己打數字就會改成手動">自動</label><input type="checkbox" data-k="loopAuto">
+    </div><div id="loopWhy" class="rules" style="font-size:12px;color:var(--mute);margin-top:4px;white-space:pre-line"></div><div class="grid">
+      <label>背景（PSD 透明時）</label><input type="text" data-k="bg" style="width:80px">
+    </div>
+    <div class="tplrow" title="把這個畫板的特效（照圖層名稱）和右邊設定存起來，下次圖層名稱一樣的案子一鍵套用">
+      動態範本 <select id="tplSel"></select><button id="tplApply">套用</button><button id="tplSave">存成範本</button><button id="tplDel">刪除</button>
+    </div></fieldset>
+    <fieldset><legend>進場（推進畫面）</legend><div class="grid">
+      <label title="圖層名稱只寫「進場」「滑入」，或在左邊手動加進場時用這個">進場方式</label><select data-k="enterType"><option value="left">從左滑入</option><option value="right">從右滑入</option><option value="top">從上滑入</option><option value="bottom">從下滑入</option><option value="zoom">放大進場</option><option value="pop">彈出</option><option value="fade">淡入</option><option value="blur">模糊變清楚</option><option value="wipe">由左往右擦出</option></select>
+      <label>每個進場秒數</label><input type="number" data-k="enterDur" step="0.1" min="0.1">
+      <label title="下一個比上一個晚幾秒進來（照接續順序，同號碼＝同時）">間隔秒數</label><input type="number" data-k="enterGap" step="0.1" min="0">
+      <label>開始前等幾秒</label><input type="number" data-k="enterDelay" step="0.1" min="0">
+      <label title="全部進完以後停多久（自動算循環秒數用）">進完停留秒數</label><input type="number" data-k="enterHold" step="0.5" min="0">
+      <label>緩動</label><select data-k="enterEase"><option value="out">先快後慢</option><option value="back">超過一點再彈回</option><option value="inout">慢→快→慢</option><option value="linear">等速</option></select>
+      <label title="0＝從畫面外推進來（產品）；填數字＝只滑這麼多 px，並一起淡入（文字）">滑入距離 px（0＝從畫面外）</label><input type="number" data-k="enterDist" min="0">
+      <label title="循環最後 0.3 秒全部淡出，GIF 重播時不會突然跳回空白">結尾淡出</label><input type="checkbox" data-k="enterOutro">
+    </div><div class="rules" style="font-size:12px;color:var(--mute);margin-top:4px">進來後就停在原位；可以跟飄浮、縮放等一起用。順序照圖層的「接續順序」。</div></fieldset>
+    <fieldset><legend>飄浮 上下</legend><div class="grid">
+      <label>幅度 px</label><input type="number" data-k="bobAmp">
+      <label title="一層做完一次動作（例如放大再縮回）要幾秒">每次動作秒數</label><input type="number" data-k="bobDur" step="0.1" min="0.1">
+      <label>次數</label><input type="number" data-k="bobTimes" min="1">
+      <label title="好幾層都有這個特效時，照順序一個接一個">多層接續</label><input type="checkbox" data-k="bobSeq">
+      <label title="輪流：一個做完才換下一個，不重疊；錯開：大家同時在動，時間錯開">接續方式</label><select data-k="bobSeqMode"><option value="turn">輪流</option><option value="stagger">錯開</option></select>
+      <label>逐格</label><input type="checkbox" data-k="bobStep">
+      <label title="一次動作分幾張圖跳完">逐格：每次幾格</label><input type="number" data-k="bobFrames" min="1">
+    </div></fieldset>
+    <fieldset><legend>搖擺 左右</legend><div class="grid">
+      <label>角度 °</label><input type="number" data-k="swayAngle">
+      <label title="一層做完一次動作（例如放大再縮回）要幾秒">每次動作秒數</label><input type="number" data-k="swayDur" step="0.1" min="0.1">
+      <label>次數</label><input type="number" data-k="swayTimes" min="1">
+      <label title="好幾層都有這個特效時，照順序一個接一個">多層接續</label><input type="checkbox" data-k="swaySeq">
+      <label title="輪流：一個做完才換下一個，不重疊；錯開：大家同時在動，時間錯開">接續方式</label><select data-k="swaySeqMode"><option value="turn">輪流</option><option value="stagger">錯開</option></select>
+      <label>支點</label><select data-k="swayAnchor"><option value="center">中心</option><option value="bottom">底部</option><option value="top">頂部</option></select>
+      <label>逐格</label><input type="checkbox" data-k="swayStep">
+      <label title="一次動作分幾張圖跳完">逐格：每次幾格</label><input type="number" data-k="swayFrames" min="1">
+    </div></fieldset>
+    <fieldset><legend>縮放</legend><div class="grid">
+      <label>幅度 %</label><input type="number" data-k="pulseAmp">
+      <label title="一層做完一次動作（例如放大再縮回）要幾秒">每次動作秒數</label><input type="number" data-k="pulseDur" step="0.1" min="0.1">
+      <label>次數</label><input type="number" data-k="pulseTimes" min="1">
+      <label title="好幾層都有這個特效時，照順序一個接一個">多層接續</label><input type="checkbox" data-k="pulseSeq">
+      <label title="輪流：一個做完才換下一個，不重疊；錯開：大家同時在動，時間錯開">接續方式</label><select data-k="pulseSeqMode"><option value="turn">輪流</option><option value="stagger">錯開</option></select>
+      <label>只放大</label><input type="checkbox" data-k="pulseUp">
+      <label>逐格</label><input type="checkbox" data-k="pulseStep">
+      <label title="一次動作分幾張圖跳完">逐格：每次幾格</label><input type="number" data-k="pulseFrames" min="1">
+    </div></fieldset>
+    <fieldset><legend>閃光</legend><div class="grid">
+      <label title="一層做完一次動作（例如放大再縮回）要幾秒">每次動作秒數</label><input type="number" data-k="flashDur" step="0.1" min="0.1">
+      <label>次數</label><input type="number" data-k="flashTimes" min="1">
+      <label title="好幾層都有這個特效時，照順序一個接一個">多層接續</label><input type="checkbox" data-k="flashSeq">
+      <label title="輪流：一個做完才換下一個，不重疊；錯開：大家同時在動，時間錯開">接續方式</label><select data-k="flashSeqMode"><option value="turn">輪流</option><option value="stagger">錯開</option></select>
+      <label>最暗 %</label><input type="number" data-k="flashLow">
+    </div><div class="rules" style="font-size:12px;color:var(--mute);margin-top:4px">只有透明度一亮一暗，不會移動</div></fieldset>
+    <fieldset><legend>流光</legend><div class="grid">
+      <label title="一層做完一次動作（例如放大再縮回）要幾秒">每次動作秒數</label><input type="number" data-k="sweepDur" step="0.1" min="0.1">
+      <label>次數</label><input type="number" data-k="sweepTimes" min="1">
+      <label title="好幾層都有這個特效時，照順序一個接一個">多層接續</label><input type="checkbox" data-k="sweepSeq">
+      <label title="輪流：一個做完才換下一個，不重疊；錯開：大家同時在動，時間錯開">接續方式</label><select data-k="sweepSeqMode"><option value="turn">輪流</option><option value="stagger">錯開</option></select>
+      <label>掃過 %（其餘時間停）</label><input type="number" data-k="sweepMove">
+      <label>寬度</label><input type="number" data-k="sweepWidth">
+      <label>亮度</label><input type="number" data-k="sweepPower">
+      <label>角度 °</label><input type="number" data-k="sweepAngle">
+      <label>金色</label><input type="checkbox" data-k="sweepGold">
+    </div></fieldset>
+    <fieldset><legend>跳色</legend><div class="grid">
+      <label title="一層把所有色票輪流跳完一次要幾秒">每次動作秒數</label><input type="number" data-k="hueDur" step="0.1" min="0.1">
+      <label>次數</label><input type="number" data-k="hueTimes" min="1">
+      <label title="好幾層都有這個特效時，照順序一個接一個">多層接續</label><input type="checkbox" data-k="hueSeq">
+      <label title="輪流：一個做完才換下一個，不重疊；錯開：大家同時在動，時間錯開">接續方式</label><select data-k="hueSeqMode"><option value="turn">輪流</option><option value="stagger">錯開</option></select>
+    </div><div class="rules" style="font-size:12px;color:var(--mute);margin:6px 0 4px">色票（照順序輪流換；AE 面板用一樣的顏色，但不會有描邊）</div>
+    <div id="huePal"></div></fieldset>
+    <fieldset><legend>描邊（只有小工具有）</legend><div class="grid">
+      <label>顏色</label><input type="color" data-k="strokeColor">
+      <label>粗細 px</label><input type="number" data-k="strokeWidth" min="1">
+    </div></fieldset>
+    </div>
+    <div id="outPane" class="pane" hidden>
+    <fieldset><legend>輸出（存到 PSD 旁的「輸出」資料夾）</legend><div class="grid">
+      <label>MP4</label><input type="checkbox" data-k="doMp4">
+      <label title="每秒幾格；60 最順，30 的檔案比較小">MP4 每秒格數</label><input type="number" data-k="mp4Fps">
+      <label>MP4 重複循環幾次</label><input type="number" data-k="mp4Repeat" min="1">
+      <label>MP4 寬度（0 = 原尺寸）</label><input type="number" data-k="mp4Width" min="0">
+      <label>GIF</label><input type="checkbox" data-k="doGif">
+      <label title="GIF 每格時間只能是 0.01 秒的整數倍，會自動用最接近、又不超過的整齊值：50／25／20／12.5／10；檔案太大時再每兩格取一格">GIF 每秒格數（最高）</label><input type="number" data-k="gifFps">
+      <label title="0：原尺寸，太大時會自動縮小；填數字：寬度固定，只降 fps／色數">GIF 寬度（0＝原尺寸可自動縮；填數字＝固定）</label><input type="number" data-k="gifWidth">
+      <label>GIF 上限 MB</label><input type="number" data-k="gifMB" step="0.5">
+      <label>切圖：靜態段格式</label><select data-k="stillFmt"><option value="png">PNG</option><option value="jpg">JPG</option></select>
+    </div>
+    <button class="primary" id="bExport" style="width:100%;margin-top:8px" disabled>輸出勾選的畫板</button>
+    <progress id="prog" value="0" max="1" hidden></progress>
+    <div id="log"></div>
+    </fieldset>
+    <fieldset class="rules"><legend>命名規則</legend>
+      圖層或群組名稱要有「動」＋關鍵字：<br>
+      飄浮：飄浮／漂浮／浮動／飄／漂／浮<br>
+      搖擺：搖／擺／晃　閃光：亮光／閃<br>
+      縮放：縮放／呼吸／放大　流光：流光／光澤<br>
+      縮放、流光可以疊加在別的動態上。<br>
+      跳色：跳色／變色（照「跳色」色票輪流換色，可疊加）　描邊：描邊（只有小工具有）<br>
+      逐格：加「逐格」，飄浮／搖擺／縮放改成一格一格跳（每秒張數看上面欄位；面板勾了就全部逐格）<br>
+      進場：左滑入／右滑入／上滑入／下滑入／放大進場／彈出／淡入／模糊進場／擦出（只寫「進場」「滑入」＝照面板），可疊加<br>
+      PS 影格：在 PS「時間軸 → 影格動畫」排好的影格會自動讀進來，照每格的秒數播放<br>
+      例：動-飄浮_1、動-主標-晃-流光、動-飄浮-放大、動-飄浮-逐格<br>
+      每個畫板輸出一支；沒有畫板就整份 PSD 一支。<br>
+      點預覽上的物件＝選到那個圖層（左邊清單會跳過去，可以直接加特效）<br>
+      切圖：從預覽上方的尺標往下拉出參考線；拖參考線可以移動，拉回尺標或拉出畫面就刪除。會動的段落輸出 GIF／MP4，不動的段落輸出 PNG／JPG，檔名加 _01、_02…
+    </fieldset>
+    </div>
+  </aside>
+</main>
+<script>
+// 每次動作秒數 defaults (s): 1 浮上浮下, 1 放大縮小, 1 閃… 節奏 慢／快 multiplies these.
+const BASE_CYCLE = { bob: 2, sway: 2, pulse: 1.2, flash: 1, sweep: 1.5, hue: 1 };
+const PACE = { slow: 1.5, normal: 1, fast: 0.7 };
+const DEFAULTS = {
+  loop: 2, loopAuto: true, bg: '#ffffff', pace: 'normal',
+  bobDur: 2, swayDur: 2, pulseDur: 1.2, flashDur: 1, sweepDur: 1.5,
+  // *Seq: several layers with the same effect play one after another (飄浮 always staggered, so on by default)
+  bobSeq: true, swaySeq: false, pulseSeq: false, flashSeq: false, sweepSeq: false,
+  // *SeqMode: 'turn' = 輪流 (one finishes, then the next) / 'stagger' = 錯開 (all moving, offset in time)
+  bobSeqMode: 'stagger', swaySeqMode: 'stagger', pulseSeqMode: 'turn', flashSeqMode: 'turn', sweepSeqMode: 'turn',
+  bobAmp: 14, bobTimes: 1, bobStep: false, bobFrames: 4,
+  swayAngle: 5, swayTimes: 1, swayAnchor: 'center', swayStep: false, swayFrames: 4,
+  pulseAmp: 8, pulseTimes: 1, pulseUp: true, pulseStep: false, pulseFrames: 3,
+  flashTimes: 1, flashLow: 0,
+  sweepTimes: 1, sweepMove: 40, sweepWidth: 60, sweepPower: 80, sweepAngle: 30, sweepGold: false,
+  hueDur: 1, hueTimes: 1, hueSeq: false, hueSeqMode: 'turn', hueColors: [{ fill: null, stroke: null }, { fill: '#ffffff', stroke: null }],
+  strokeColor: '#ffffff', strokeWidth: 4,
+  // 進場: each layer slides/zooms/fades in once (order = 接續順序), then stays
+  enterType: 'left', enterDur: 0.6, enterGap: 0.3, enterDelay: 0, enterHold: 1.5, enterEase: 'out', enterDist: 0, enterOutro: true,
+  v: 4, doMp4: true, mp4Fps: 60, mp4Repeat: 1, mp4Width: 0, doGif: true, gifFps: 25, gifWidth: 0, gifMB: 3, stillFmt: 'png',
+};
+// A saved settings object (old versions too) on top of the defaults.
+function normCfg(saved) {
+  saved = { ...(saved || {}) };
+  // v2 changed the defaults to a 2 s loop and every 次數 = 1; apply that once on top of old saves
+  if ((saved.v || 1) < 2) for (const k of ['loop', 'bobTimes', 'swayTimes', 'pulseTimes', 'flashTimes', 'sweepTimes']) delete saved[k];
+  // v3: 逐格 每秒張數 (bobFps…) became 每次幾格 (bobFrames…); keep the old look: fps × the old ~cycle
+  if ((saved.v || 1) < 3) for (const k of ['bob', 'sway', 'pulse']) {
+    if (saved[k + 'Fps'] != null && saved[k + 'Frames'] == null) saved[k + 'Frames'] = Math.max(2, Math.round(saved[k + 'Fps'] * BASE_CYCLE[k]));
+    delete saved[k + 'Fps'];
+  }
+  // v4: GIF 改用整齊的每秒格數；舊預設 15（每格 0.06／0.07 秒輪流，看起來卡）換成 25
+  if ((saved.v || 1) < 4 && (saved.gifFps == null || saved.gifFps === 15)) saved.gifFps = 25;
+  // v4: MP4 預設每秒 60 格（30 格時滑入、飄浮這類位移看得出一格一格）
+  if ((saved.v || 1) < 4 && (saved.mp4Fps == null || saved.mp4Fps === 30)) saved.mp4Fps = 60;
+  return { ...JSON.parse(JSON.stringify(DEFAULTS)), ...saved, v: 4 };
+}
+const readJSON = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
+// 每個畫板各自一份設定 (localStorage 'cfg:' + PSD path + '|' + 畫板名, like the guides).
+// 'motion-cfg' = the last settings changed anywhere: an artboard opened for the first time starts
+// from a copy of it (after the short-lived per-PSD 'cfg:' + path; that is also how the old shared
+// settings carry over). `cfg` always points at the settings in use right now: the selected
+// artboard's, or — inside withCfg() — the artboard being drawn / exported.
+const cfgKey = s => 'cfg:' + s.psd + '|' + s.title;
+const cfgs = {};   // cfgKey → settings
+let cfg = normCfg(readJSON('motion-cfg'));
+function cfgFor(s) {
+  if (!s) return cfg;
+  const k = cfgKey(s);
+  if (!cfgs[k]) cfgs[k] = normCfg(readJSON(k) || readJSON('cfg:' + s.psd) || readJSON('motion-cfg'));
+  return cfgs[k];
+}
+function withCfg(s, fn) {
+  const was = cfg;
+  cfg = cfgFor(s);
+  try { return fn(); } finally { cfg = was; }
+}
+const useCurrentCfg = () => { if (current) cfg = cfgFor(current); };
+
+const $ = s => document.querySelector(s);
+const PI = Math.PI;
+let scenes = [], current = null, playing = true, t0 = performance.now(), tNow = 0, busy = false;
+
+// ---------- undo (Ctrl+Z / Ctrl+Y) ----------
+// A snapshot is the whole editable state: settings, each artboard's guides, forced band
+// modes and checkbox, and each PSD's manual effects. Every edit commits the snapshot taken before it.
+const snap = () => JSON.stringify({ cfg, cfgs: Object.fromEntries(scenes.map(s => [cfgKey(s), cfgFor(s)])), sc: scenes.map(s => [s.id, s.guides, s.segMode || {}, !!s.checked]),
+  fx: Object.fromEntries([...new Set(scenes.map(s => s.psd))].map(p => [p, uOf(p)])),
+  vg: Object.fromEntries([...new Set(scenes.map(s => s.psd))].map(p => [p, gOf(p)])),
+  lo: Object.fromEntries([...new Set(scenes.map(s => s.psd))].map(p => [p, opsOf(p)])) });
+const undoStack = [], redoStack = [];
+let typing = null;    // {k, at}: keystrokes in one settings field within 1.5 s are one undo step
+function commit(before, field) {
+  if (before == null || before === snap()) return;
+  const now = Date.now();
+  const merge = field && typing && typing.k === field && now - typing.at < 1500;
+  typing = field ? { k: field, at: now } : null;
+  if (merge) return;
+  undoStack.push(before);
+  if (undoStack.length > 300) undoStack.shift();
+  redoStack.length = 0;
+}
+function syncInputs() {
+  document.querySelectorAll('[data-k]').forEach(el => {
+    const k = el.dataset.k;
+    if (el.type === 'checkbox') el.checked = !!cfg[k]; else el.value = cfg[k];
+  });
+  renderPal();
+  showCfgWhere();
+}
+function showCfgWhere() {
+  const el = $('#cfgWhere');
+  if (el) el.textContent = current ? `右邊這些設定只存在：${current.psd.split(/[\\/]/).pop()}／${current.title}（每個畫板各自記住）` : '';
+}
+function restore(str) {
+  const o = JSON.parse(str);
+  if (o.cfgs) for (const key in o.cfgs) {
+    const c = cfgs[key] || (cfgs[key] = {});
+    for (const k in c) delete c[k];
+    Object.assign(c, o.cfgs[key]);
+    try { localStorage.setItem(key, JSON.stringify(c)); } catch (e) {}
+  } else Object.assign(cfg, o.cfg);
+  useCurrentCfg();
+  for (const [id, guides, segMode, checked] of o.sc) {
+    const s = scenes.find(x => x.id === id);
+    if (!s) continue;
+    s.guides = guides; s.segMode = segMode; s.checked = checked;
+    saveGuides(s);
+  }
+  for (const psd in o.fx || {}) { fxUser[psd] = o.fx[psd]; saveU(psd); }
+  for (const psd in o.vg || {}) { vgroups[psd] = o.vg[psd]; saveG(psd); }
+  for (const psd in o.lo || {}) { layerOps[psd] = o.lo[psd]; saveOps(psd); }
+  syncInputs();
+  // a redo can bring back an effect on a layer that is not split out yet
+  Promise.all([...new Set(scenes.map(s => s.psd))].map(p => syncFx(scenes.find(s => s.psd === p))));
+}
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.hidden = true, 1500);
+}
+function undo(redo) {
+  typing = null;
+  const from = redo ? redoStack : undoStack, to = redo ? undoStack : redoStack;
+  if (!from.length) return toast(redo ? '沒有可以重做的' : '沒有可以復原的');
+  to.push(snap());
+  restore(from.pop());
+  toast(redo ? '已重做' : '已復原');
+}
+const typingIn = () => /INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '');
+document.addEventListener('keydown', e => {
+  if (!current || typingIn()) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll(current); return; }   // Ctrl+A／Ctrl+Alt+A 全選圖層
+  const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  const ids = selMulti.length ? selMulti : selLid != null ? [selLid] : [];
+  if (arrow && ids.length && !e.ctrlKey && !e.altKey) {   // 方向鍵 1 px，Shift＋方向鍵 10 px（like PS）
+    e.preventDefault();
+    const k = e.shiftKey ? 10 : 1;
+    nudge(current, ids, arrow[0] * k, arrow[1] * k);
+  }
+});
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.id === 'paths') return;
+  const k = e.key.toLowerCase();
+  if (k === 'g') { e.preventDefault(); groupShortcut(e.shiftKey); return; }   // Ctrl+G 組成群組／Ctrl+Shift+G 解散
+  if (k !== 'z' && k !== 'y') return;
+  e.preventDefault();
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  undo(k === 'y' || (k === 'z' && e.shiftKey));
+});
+
+// ---------- settings ----------
+document.querySelectorAll('[data-k]').forEach(el => {
+  const k = el.dataset.k;
+  if (el.type === 'checkbox') el.checked = !!cfg[k]; else el.value = cfg[k];
+  el.addEventListener('input', () => {
+    useCurrentCfg();   // edits go to the selected artboard's PSD
+    const before = snap();
+    setSetting(k, el.type === 'checkbox' ? el.checked : el.type === 'number' ? (parseFloat(el.value) || 0) : el.value);
+    commit(before, el.type === 'number' || el.type === 'text' ? k : null);   // only typing merges into one step
+    saveCfg();
+    clearTimeout(remap); remap = setTimeout(remapNow, 300);
+  });
+});
+// One setting change plus what it implies (also used by the 指令介面)
+function setSetting(k, v) {
+  cfg[k] = v;
+  if (k === 'loop' && cfg.loopAuto) { cfg.loopAuto = false; syncInputs(); }   // typing a number = 手動
+  // 節奏 sets every 每次動作秒數 at once; typing one of them makes it 自訂
+  if (k === 'pace' && PACE[cfg.pace]) { for (const e in BASE_CYCLE) cfg[e + 'Dur'] = +(BASE_CYCLE[e] * PACE[cfg.pace]).toFixed(2); syncInputs(); }
+  if (/Dur$/.test(k) && cfg.pace) { cfg.pace = ''; syncInputs(); }
+  // unticking 自動 keeps the number it was showing instead of jumping back to an old one
+  if (k === 'loopAuto' && !cfg.loopAuto && current && current.autoLoop) { cfg.loop = current.autoLoop; syncInputs(); }
+}
+// Saves the selected PSD's settings, and remembers them as the start for PSDs opened later
+const saveCfg = () => {
+  useCurrentCfg();
+  try {
+    if (current) localStorage.setItem(cfgKey(current), JSON.stringify(cfg));
+    localStorage.setItem('motion-cfg', JSON.stringify(cfg));
+  } catch (e) {}
+};
+const remapNow = () => { scenes.forEach(rebuildFx); renderSlices(); if (current) renderLayers(current); showLoop(); };
+let remap = 0;
+// 自動循環秒數 is per artboard (s.autoLoop, from rebuildFx); loopScene = the artboard being
+// drawn right now, so preview, motion check and export each use their own artboard's length.
+let loopScene = null;
+const loopLen = () => {
+  const s = loopScene || current;
+  return cfg.loopAuto && s && s.autoLoop ? s.autoLoop : Math.max(0.5, cfg.loop || 4);
+};
+const TIMES_KEY = { bob: 'bobTimes', sway: 'swayTimes', pulse: 'pulseTimes', flash: 'flashTimes', sweep: 'sweepTimes', hue: 'hueTimes' };
+const fmtS = x => String(+x.toFixed(2));
+// How effect k fills the loop on artboard s. N = layers taking 輪流 turns (1 when 錯開/off).
+// One action lasts about 每次動作秒數; the loop holds 次數 × m whole periods (m = the whole
+// number that keeps one action closest to that length), each period = N actions back to back.
+// So the longest effect (the one that set the auto loop) gets its exact length and the
+// others the nearest length that still loops seamlessly.
+function rhythm(k, s = loopScene || current) {
+  const L = loopLen(), N = (cfg[k + 'Seq'] && cfg[k + 'SeqMode'] !== 'stagger' && s && s.nSlot && s.nSlot[k]) || 1;
+  const times = Math.max(1, Math.round(cfg[TIMES_KEY[k]] || 1)), dur = Math.max(0.05, cfg[k + 'Dur'] || BASE_CYCLE[k]);
+  const reps = times * Math.max(1, Math.round(L / (dur * times * N)));
+  return { L, N, times, dur, reps, p: L / reps, act: L / reps / N };
+}
+// Longest need among the effects on this artboard: 每次動作秒數 × 次數 × (layers taking 輪流
+// turns). Not rounded, so each action keeps its exact length. Returns [seconds, why].
+function autoLoopOf(s) {
+  let best = 0, why = '';
+  // 進場: the last one in, then stay a while; PS 影格: every frame once
+  if (s.nSlot && s.nSlot.enter) {
+    const need = cfg.enterDelay + (s.nSlot.enter - 1) * cfg.enterGap + cfg.enterDur + cfg.enterHold;
+    if (need > best) { best = need; why = '進場'; }
+  }
+  if (s.frames) { const need = s.frames.reduce((a, b) => a + b, 0); if (need > best) { best = need; why = 'PS 影格'; } }
+  for (const k in SEQ) {
+    if (k === 'enter' || !(s.nSlot && s.nSlot[k])) continue;
+    const times = Math.max(1, Math.round(cfg[TIMES_KEY[k]] || 1));
+    const N = cfg[k + 'Seq'] && cfg[k + 'SeqMode'] !== 'stagger' ? s.nSlot[k] : 1;
+    const need = Math.max(0.05, cfg[k + 'Dur'] || BASE_CYCLE[k]) * times * N;
+    if (need > best) { best = need; why = SEQNAME[k]; }
+  }
+  if (!best) return [2, ''];
+  return [Math.min(30, Math.max(0.3, +best.toFixed(3))), why];
+}
+// The panel spells out the result per effect, plus a text timeline of who moves when (輪流).
+function showLoop() {
+  const el = $('#loopWhy'), box = document.querySelector('[data-k=loop]');
+  if (!current) { el.textContent = ''; return; }
+  if (cfg.loopAuto) box.value = current.autoLoop;
+  const L = loopLen(), lines = [];
+  lines.push(cfg.loopAuto ? (current.autoWhy ? `自動：${fmtS(L)} 秒（照最長的${current.autoWhy}算）` : '這個畫板沒有動態，先用 2 秒')
+    : `手動：${fmtS(L)} 秒，每次動作秒數照這個長度反推（勾「自動」就會重新幫你算）`);
+  const nodes = fxNodes(current).filter(n => n.fx);
+  if (current.frames) {
+    const d = current.frames, T = d.reduce((a, b) => a + b, 0), reps = Math.max(1, Math.round(L / T));
+    lines.push(`PS 影格：${d.length} 格，共 ${fmtS(T)} 秒` + (new Set(d).size === 1 ? `（每格 ${fmtS(d[0])} 秒）` : '') +
+      (reps > 1 ? `，循環裡播 ${reps} 次` : '') + (Math.abs(reps * T - L) > 0.01 ? `，配合循環每格調成 ${fmtS(L / reps / T * d[0])} 秒左右` : ''));
+  }
+  if (current.nSlot && current.nSlot.enter) {
+    const K = current.nSlot.enter, end = cfg.enterDelay + (K - 1) * cfg.enterGap + cfg.enterDur;
+    lines.push(`進場：${K > 1 ? K + ' 批，間隔 ' + fmtS(cfg.enterGap) + ' 秒，' : ''}每個 ${fmtS(cfg.enterDur)} 秒 → ${fmtS(end)} 秒全部進完` +
+      (L > end ? `，停 ${fmtS(L - end)} 秒` : '（循環太短，還沒進完就重來了）'));
+  }
+  for (const k in SEQ) {
+    const K = current.nSlot && current.nSlot[k];
+    if (k === 'enter' || !K) continue;
+    const r = rhythm(k, current);
+    let t = `${SEQNAME[k]}：` + (r.N > 1 ? `${r.N} 層輪流 × ` : '') + `每次 ${fmtS(r.act)} 秒` +
+      (r.reps > 1 ? ` × ${r.reps} 次` : '') + ` → 循環 ${fmtS(L)} 秒`;
+    if (Math.abs(r.act - r.dur) > 0.005) t += `（設 ${fmtS(r.dur)} 秒，配合循環調成 ${fmtS(r.act)}）`;
+    if (K > 1 && r.N === 1 && cfg[k + 'Seq']) t += `；${K} 層錯開，每層晚 ${fmtS(r.p / K)} 秒`;
+    if (STEP_KEY[k] && nodes.some(n => SEQ[k](n.fx) && !n.fx.noStep && (n.fx.step || cfg[k + 'Step']))) {
+      const F = Math.max(1, Math.round(cfg[k + 'Frames'] || 3));
+      t += `；逐格 ${F} 格 → 每 ${fmtS(r.act / F)} 秒跳一格`;
+    }
+    lines.push(t);
+    if (r.N > 1) {   // one period; it repeats r.reps times in the loop
+      const w = Math.max(2, Math.min(4, Math.floor(24 / r.N)));
+      for (let i = 1; i <= Math.min(r.N, 8); i++)
+        lines.push(`  ${i} ` + '□'.repeat(w * (i - 1)) + '■'.repeat(w) + '□'.repeat(w * (r.N - i)));
+      if (r.reps > 1) lines.push(`  （上面這輪重複 ${r.reps} 次）`);
+    }
+  }
+  el.textContent = lines.join('\n');
+}
+const STEP_KEY = { bob: 1, sway: 1, pulse: 1 };
+
+// ---------- motion (same formulas as the AE panel) ----------
+// 逐格 = 每次幾格: one action (c 0–1) is shown as F held poses.
+// On when the panel box is ticked, or always when the layer name has 逐格.
+// mid: sine waves take each pose from the middle of its hold, so 2 poses per action
+// land on top/bottom instead of both on the centre line (sin 0 = sin π = 0).
+// The 只放大 cosine wave keeps the start (its extremes are at 0 and π).
+// true when layer n takes whole 輪流 turns for effect k (not 錯開, and more than one layer)
+function isTurn(n, k) {
+  const sl = n.slot && n.slot[k];
+  return !!(cfg[k + 'Seq'] && sl && sl[1] > 1 && cfg[k + 'SeqMode'] !== 'stagger');
+}
+function stepC(c, f, key, mid = true) {
+  if (c < 0 || f.noStep || !(f.step || cfg[key + 'Step'])) return c;   // noStep: 逐格 switched off on this layer
+  const F = Math.max(1, Math.round(cfg[key + 'Frames'] || 3));
+  return (Math.floor(c * F + 1e-6) + (mid ? 0.5 : 0)) / F;
+}
+// 多層接續 for slot i of N (n.slot[k] = [i, N]), as the position 0–1 in the effect's cycle:
+//   錯開 (stagger): everyone keeps going, slot i just runs i/N of a period later.
+//   輪流 (turn):    slot i plays one whole cycle inside its own 1/N of the period and rests
+//                   otherwise (returns -1), so 1 放大縮小 → 2 放大縮小 → 3 放大縮小 never overlap.
+// Without 接續 it is just the position in the normal cycle.
+function turn(n, k, t, p) {
+  const sl = n.slot && n.slot[k], seq = cfg[k + 'Seq'] && sl && sl[1] > 1;
+  let c = t / p - (seq ? (sl[0] - 1) / sl[1] : 0);
+  c -= Math.floor(c);                       // 0–1 through the period
+  if (!seq || cfg[k + 'SeqMode'] === 'stagger') return c;
+  c *= sl[1];                               // its own slot stretched to a whole cycle
+  return c < 1 ? c : -1;
+}
+// PS 影格: which frame is showing at time t (the frames repeat a whole number of times in the loop)
+function psFrame(t, s = loopScene || current) {
+  const d = s && s.frames;
+  if (!d) return 0;
+  const T = d.reduce((a, b) => a + b, 0), L = loopLen(), k = L / (Math.max(1, Math.round(L / T)) * T);
+  let x = (((t % (T * k)) + T * k) % (T * k)) / k;
+  for (let i = 0; i < d.length; i++) { if (x < d[i]) return i; x -= d[i]; }
+  return d.length - 1;
+}
+const EASE = {
+  linear: x => x, out: x => 1 - Math.pow(1 - x, 3),
+  inout: x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2,
+  back: x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
+};
+// 進場: layer i (接續順序) starts enterDelay + (i-1) × enterGap in, arrives over enterDur, then stays.
+function enter(n, t, m, kind) {
+  const sl = n.slot && n.slot.enter, start = cfg.enterDelay + ((sl ? sl[0] : 1) - 1) * cfg.enterGap;
+  if (t < start) { m.op = 0; return; }
+  const raw = Math.min(1, (t - start) / Math.max(0.05, cfg.enterDur));
+  const e = (EASE[kind === 'pop' ? 'back' : cfg.enterEase] || EASE.out)(raw), u = 1 - e;
+  const sc = loopScene || current, W = sc ? sc.w : 1000, H = sc ? sc.h : 1000, d = Math.max(0, cfg.enterDist || 0);
+  if (kind === 'left') m.dx -= u * (d || n.x + n.w);
+  else if (kind === 'right') m.dx += u * (d || W - n.x);
+  else if (kind === 'top') m.dy -= u * (d || n.y + n.h);
+  else if (kind === 'bottom') m.dy += u * (d || H - n.y);
+  else if (kind === 'zoom' || kind === 'pop') m.sc *= Math.max(0.001, e);
+  else if (kind === 'fade') m.op *= e;
+  else if (kind === 'blur') { m.blur = u * 24; m.op *= Math.min(1, raw * 1.5); }
+  else if (kind === 'wipe') m.wipe = Math.max(0, Math.min(1, e));
+  if (d && ['left', 'right', 'top', 'bottom'].includes(kind)) m.op *= Math.min(1, raw * 2);   // short slide: fade in with it
+  if (cfg.enterOutro) { const k = (loopLen() - t) / 0.3; if (k < 1) m.op *= Math.max(0, k); }   // 結尾淡出
+}
+function motion(n, t) {
+  const f = n.fx, m = { dx: 0, dy: 0, rot: 0, sc: 1, op: 1, ax: n.x + n.w / 2, ay: n.y + n.h / 2 };
+  if (n.mv) { m.dx += n.mv[0]; m.dy += n.mv[1]; }
+  if (moveDrag && moveDrag.ids.includes(n.lid)) { m.dx += moveDrag.dx; m.dy += moveDrag.dy; }
+  if (n.fv) {   // PS 影格: shown in this frame? (and its offset there)
+    const i = psFrame(t);
+    if (!n.fv[i]) m.op = 0;
+    if (n.fo && n.fo[i]) { m.dx += n.fo[i][0]; m.dy += n.fo[i][1]; }
+  }
+  if (!f) return m;
+  if (f.main === 'bob' && isTurn(n, 'bob')) {
+    // 輪流 = 跳一下: up from its own spot and back down to it, never below, so the ones
+    // waiting and the one hopping share the same baseline. 逐格 F frames: pose i is
+    // sin(π(i+1)/F), which always ends back on the spot (2 格 = 上 → 回原位).
+    const c = turn(n, 'bob', t, rhythm('bob').p);
+    let h = 0;
+    if (c >= 0) {
+      if (!f.noStep && (f.step || cfg.bobStep)) {
+        const F = Math.max(1, Math.round(cfg.bobFrames || 3)), i = Math.min(F - 1, Math.floor(c * F + 1e-6));
+        h = Math.sin(PI * (i + 1) / F);
+      } else h = Math.sin(PI * c);
+    }
+    m.dy = -cfg.bobAmp * h;
+  } else if (f.main === 'bob') {
+    const c = stepC(turn(n, 'bob', t, rhythm('bob').p), f, 'bob');   // -1 = waiting: at rest
+    m.dy = c < 0 ? 0 : cfg.bobAmp * Math.sin(2 * PI * c);
+  } else if (f.main === 'sway') {
+    const c = stepC(turn(n, 'sway', t, rhythm('sway').p), f, 'sway');
+    m.rot = c < 0 ? 0 : cfg.swayAngle * Math.sin(2 * PI * c);
+    if (!f.pulse && cfg.swayAnchor === 'bottom') m.ay = n.y + n.h;
+    if (!f.pulse && cfg.swayAnchor === 'top') m.ay = n.y;
+  } else if (f.main === 'flash') {
+    // opacity only: fades between 最暗 % and full, no scale or spin
+    const c = turn(n, 'flash', t, rhythm('flash').p), s = c < 0 ? 0 : Math.sin(PI * c), k = Math.pow(s * s, 2);
+    m.op = (cfg.flashLow + (100 - cfg.flashLow) * k) / 100;
+  }
+  if (f.pulse) {
+    const a = cfg.pulseAmp / 100, p = rhythm('pulse').p;
+    const c = stepC(turn(n, 'pulse', t, p), f, 'pulse', !cfg.pulseUp);   // -1 = waiting for its turn: 100%
+    if (c >= 0) m.sc *= cfg.pulseUp ? 1 + a * (0.5 - 0.5 * Math.cos(2 * PI * c)) : 1 + a * Math.sin(2 * PI * c);
+  }
+  if (f.enter) enter(n, t, m, enterKind(f));
+  return m;
+}
+function applyMotion(ctx, n, t) {
+  const m = motion(n, t);
+  ctx.translate(m.ax + m.dx, m.ay + m.dy);
+  if (m.rot) ctx.rotate(m.rot * PI / 180);
+  if (m.sc !== 1) ctx.scale(m.sc, m.sc);
+  ctx.translate(-m.ax, -m.ay);
+  ctx.globalAlpha *= Math.max(0, Math.min(1, m.op));
+  if (m.blur > 0.3) ctx.filter = `blur(${m.blur.toFixed(1)}px)`;
+  if (m.wipe != null && m.wipe < 1) { ctx.beginPath(); ctx.rect(n.x - 8, n.y - 8, (n.w + 16) * m.wipe, n.h + 16); ctx.clip(); }   // 擦出
+}
+
+// ---------- 流光: a soft band crossing once per period, then waiting off to the side ----------
+const pool = {};
+function scratch(key, w, h) {
+  let c = pool[key];
+  if (!c) c = pool[key] = document.createElement('canvas');
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1;
+  x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, w, h);
+  return c;
+}
+// c = turn() position: 0–1 through its cycle, -1 while waiting for its 接續 turn (band parked off the edge)
+function sweep(layer, c) {
+  const w = layer.width, h = layer.height;
+  const d = Math.min(1, Math.max(0.05, cfg.sweepMove / 100));
+  let u = c < 0 ? 1 : Math.min(1, c / d);
+  u = 0.5 - 0.5 * Math.cos(PI * u);
+  const W = Math.max(4, cfg.sweepWidth), ang = cfg.sweepAngle * PI / 180;
+  const nx = Math.cos(ang), ny = Math.sin(ang);
+  const pad = W * 2 + h * Math.abs(Math.tan(ang)) * 0.5 + h * 0.5;
+  const cx = -pad + (w + 2 * pad) * u, cy = h / 2;
+  const lc = scratch('light', w, h), lx = lc.getContext('2d');
+  const g = lx.createLinearGradient(cx - nx * W, cy - ny * W, cx + nx * W, cy + ny * W);
+  const col = cfg.sweepGold ? '255,217,140' : '255,255,255', pw = Math.min(1.5, cfg.sweepPower / 100);
+  for (let i = 0; i <= 12; i++) {
+    const s = i / 12, x = (s - 0.5) * 2;
+    g.addColorStop(s, `rgba(${col},${Math.min(1, pw * Math.exp(-4 * x * x))})`);
+  }
+  lx.fillStyle = g; lx.fillRect(0, 0, w, h);
+  lx.globalCompositeOperation = 'destination-in'; lx.drawImage(layer, 0, 0);
+  const x = layer.getContext('2d');
+  x.globalCompositeOperation = 'screen'; x.drawImage(lc, 0, 0);
+  x.globalCompositeOperation = 'source-over';
+}
+
+// ---------- scene drawing ----------
+function drawNodes(ctx, nodes, t, depth) {
+  for (const n of nodes) {
+    ctx.save();
+    if (n.parent) applyMotion(ctx, n.parent, t);   // 閃光 riding along with the one 搖擺 layer
+    applyMotion(ctx, n, t);
+    ctx.globalCompositeOperation = n.blend || 'source-over';
+    const look = lookOf(n, t);
+    if ((n.fx && n.fx.sweep) || look) {
+      let c = scratch('fx' + depth, Math.max(1, n.w), Math.max(1, n.h)), pad = 0;
+      const x = c.getContext('2d');
+      if (n.type === 'group') { x.translate(-n.x, -n.y); drawNodes(x, n.children, t, depth + 1); x.setTransform(1, 0, 0, 1, 0, 0); }
+      else x.drawImage(n.img, 0, 0);
+      if (look) ({ c, pad } = restyle(c, look, depth));
+      if (n.fx && n.fx.sweep) sweep(c, turn(n, 'sweep', t, rhythm('sweep').p));
+      ctx.drawImage(c, n.x - pad, n.y - pad);
+    } else if (n.type === 'group') {
+      drawNodes(ctx, n.children, t, depth + 1);
+    } else {
+      ctx.drawImage(n.img, n.x, n.y);
+    }
+    ctx.restore();
+  }
+}
+// k = scale, oy = top of the slice being drawn (切圖 draws one band at a time)
+function drawScene(ctx, sc, t, k = 1, oy = 0) { withCfg(sc, () => drawScene0(ctx, sc, t, k, oy)); }
+function drawScene0(ctx, sc, t, k, oy) {
+  loopScene = sc;
+  ctx.setTransform(k, 0, 0, k, 0, -oy * k);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = sc.bg || cfg.bg || '#ffffff';
+  ctx.fillRect(0, 0, sc.w, sc.h);
+  drawNodes(ctx, sc.nodes, t, 0);
+}
+
+// ---------- 跳色（換色票）＋描邊 ----------
+// 跳色: one action (每次動作秒數) walks through every swatch in cfg.hueColors once; same rhythm /
+// 多層接續 as the other effects (and as the AE panel, which swaps colour with a Fill effect).
+// A swatch: fill = colour or null (原色), stroke = {color, width} or null. 描邊 (tool only, AE has no
+// equivalent here) = a fixed outline in cfg.strokeColor / strokeWidth; a swatch's own stroke wins.
+const DEFAULT_HUE = () => [{ fill: null, stroke: null }, { fill: '#ffffff', stroke: null }];
+function lookOf(n, t) {
+  const f = n.fx;
+  if (!f || !(f.hue || f.stroke)) return null;
+  let fill = null, stroke = f.stroke ? { color: cfg.strokeColor || '#ffffff', width: cfg.strokeWidth || 4 } : null;
+  if (f.hue) {
+    const cols = cfg.hueColors && cfg.hueColors.length ? cfg.hueColors : DEFAULT_HUE();
+    const c = turn(n, 'hue', t, rhythm('hue').p);   // -1 = waiting for its 接續 turn: first swatch
+    const sw = cols[c < 0 ? 0 : Math.min(cols.length - 1, Math.floor(c * cols.length))];
+    if (sw.fill) fill = sw.fill;
+    if (sw.stroke) stroke = sw.stroke;
+  }
+  return fill || stroke ? { fill, stroke } : null;
+}
+// src recoloured (keeps its shape) and/or outlined; returns the canvas and how far it grew
+function restyle(src, look, depth) {
+  const w = look.stroke ? Math.max(1, Math.round(+look.stroke.width || 4)) : 0, W = src.width + 2 * w, H = src.height + 2 * w;
+  const out = scratch('sty' + depth, W, H), x = out.getContext('2d');
+  if (w) {
+    const s1 = scratch('stk' + depth, W, H), sx = s1.getContext('2d');
+    for (let i = 0; i < 24; i++) { const a = i / 24 * 2 * PI; sx.drawImage(src, w + Math.cos(a) * w, w + Math.sin(a) * w); }
+    sx.drawImage(src, w, w);
+    sx.globalCompositeOperation = 'source-in'; sx.fillStyle = look.stroke.color || '#ffffff'; sx.fillRect(0, 0, W, H);
+    sx.globalCompositeOperation = 'source-over';
+    x.drawImage(s1, 0, 0);
+  }
+  if (look.fill) {
+    const b = scratch('stf' + depth, src.width, src.height), bx = b.getContext('2d');
+    bx.drawImage(src, 0, 0);
+    bx.globalCompositeOperation = 'source-in'; bx.fillStyle = look.fill; bx.fillRect(0, 0, src.width, src.height);
+    bx.globalCompositeOperation = 'source-over';
+    x.drawImage(b, w, w);
+  } else x.drawImage(src, w, w);
+  return { c: out, pad: w };
+}
+// 跳色 swatches in the settings panel
+function renderPal() {
+  const box = document.getElementById('huePal');
+  if (!box) return;
+  const cols = cfg.hueColors && cfg.hueColors.length ? cfg.hueColors : DEFAULT_HUE();
+  box.innerHTML = cols.map((c, i) => `<div class="palrow">
+    <b>${i + 1}</b>
+    <label title="不換色，用圖層原本的樣子"><input type="checkbox" data-pi="${i}" data-pk="orig" ${c.fill ? '' : 'checked'}>原色</label>
+    ${c.fill ? `<input type="color" data-pi="${i}" data-pk="fill" value="${c.fill}">` : ''}
+    <label title="這個色票加描邊"><input type="checkbox" data-pi="${i}" data-pk="st" ${c.stroke ? 'checked' : ''}>描邊</label>
+    ${c.stroke ? `<input type="color" data-pi="${i}" data-pk="stc" value="${c.stroke.color}"><input type="number" data-pi="${i}" data-pk="stw" min="1" value="${c.stroke.width}" style="width:44px">` : ''}
+    ${cols.length > 1 ? `<button data-pdel="${i}" title="刪掉這個色票">✕</button>` : ''}</div>`).join('') +
+    '<button id="palAdd">＋ 加色票</button>';
+  const edit = fn => {
+    const b = snap(), next = JSON.parse(JSON.stringify(cols));
+    fn(next);
+    cfg.hueColors = next;
+    commit(b); saveCfg(); renderPal();
+  };
+  box.querySelectorAll('[data-pk]').forEach(el => el.onchange = () => edit(c => {
+    const s = c[+el.dataset.pi], k = el.dataset.pk;
+    if (k === 'orig') s.fill = el.checked ? null : '#ffffff';
+    if (k === 'fill') s.fill = el.value;
+    if (k === 'st') s.stroke = el.checked ? { color: '#e8622a', width: 4 } : null;
+    if (k === 'stc') s.stroke = { ...(s.stroke || { width: 4 }), color: el.value };
+    if (k === 'stw') s.stroke = { ...(s.stroke || { color: '#e8622a' }), width: Math.max(1, +el.value || 1) };
+  }));
+  box.querySelectorAll('[data-pdel]').forEach(el => el.onclick = () => edit(c => c.splice(+el.dataset.pdel, 1)));
+  document.getElementById('palAdd').onclick = () => edit(c => c.push({ fill: '#ffffff', stroke: null }));
+}
+
+// ---------- 特效 = 圖層名稱 ＋ 介面上的手動調整 ----------
+// n.fxName: what the layer name asks for (from the server). fxUser[psd][layer id] = manual
+// overrides: a key that is present wins over the name (main: 'bob'|'sway'|'flash'|null,
+// pulse/sweep/step: true|false). Turning an effect off and adding one are the same thing.
+const fxUser = {};
+const userKey = psd => 'fxuser:' + psd;
+function uOf(psd) {
+  if (!fxUser[psd]) { fxUser[psd] = {}; try { fxUser[psd] = JSON.parse(localStorage.getItem(userKey(psd)) || '{}'); } catch (e) {} }
+  return fxUser[psd];
+}
+function saveU(psd) { try { localStorage.setItem(userKey(psd), JSON.stringify(uOf(psd))); } catch (e) {} }
+// Layers that need their own picture because the tool (not the name) makes them move.
+function splitMap() {
+  const out = {};
+  const want = (psd, U) => { const ids = Object.keys(U).filter(id => { const u = U[id]; return u.main || u.pulse || u.sweep || u.hue || u.stroke || u.enter || u.move; }); if (ids.length) out[psd] = ids.map(Number); };
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith('fxuser:')) want(k.slice(7), JSON.parse(localStorage.getItem(k))); } } catch (e) {}
+  for (const psd in fxUser) want(psd, fxUser[psd]);
+  return out;
+}
+// 刪除的圖層 (u.hidden): sent as hide so the server leaves them out; hidAt[psd] = what the
+// pieces on screen were cut with, so a change (or Ctrl+Z) knows to cut again.
+const hideOf = psd => Object.keys(uOf(psd)).filter(id => uOf(psd)[id].hidden).map(Number).sort((a, b) => a - b);
+// PS 裡隱藏的圖層 (tree row psHidden) that the tool turns on (u.show): sent as show
+const showOf = psd => Object.keys(uOf(psd)).filter(id => uOf(psd)[id].show).map(Number).sort((a, b) => a - b);
+const visKey = psd => hideOf(psd).join() + '|' + showOf(psd).join() + '|' + JSON.stringify(gOf(psd)) + '|' + JSON.stringify(opsMap([psd])[psd] || null);
+// 圖層順序（清單上拖曳）: moves [[lid, target lid, 'above'|'below'|'into'], …] per PSD, applied in
+// order by the server in memory. 改名稱 is u.name (the name's keywords then count, e.g. 動-飄浮).
+const layerOps = {};
+const opsKey = psd => 'layerops:' + psd;
+function opsOf(psd) { if (!layerOps[psd]) layerOps[psd] = readJSON(opsKey(psd)) || { moves: [] }; return layerOps[psd]; }
+function saveOps(psd) { try { localStorage.setItem(opsKey(psd), JSON.stringify(opsOf(psd))); } catch (e) {} }
+function opsMap(paths) {
+  const out = {};
+  for (const p of paths) {
+    const U = uOf(p), rename = {};
+    for (const id in U) if (U[id].name) rename[id] = U[id].name;
+    const moves = opsOf(p).moves;
+    if (moves.length || Object.keys(rename).length) out[p] = { rename, moves };
+  }
+  return out;
+}
+// 群組 made in the tool: [{id (900001…), name, lids}] per PSD. The server merges the members
+// into one picture (lid = id) that moves as one; the 圖層 list gets a 🔗 row for it.
+const vgroups = {};
+const groupKey = psd => 'vgroups:' + psd;
+function gOf(psd) { if (!vgroups[psd]) vgroups[psd] = readJSON(groupKey(psd)) || []; return vgroups[psd]; }
+function saveG(psd) { try { localStorage.setItem(groupKey(psd), JSON.stringify(gOf(psd))); } catch (e) {} }
+function groupsMap(paths) {
+  const out = {};
+  for (const p of paths) { const g = gOf(p); if (g.length) out[p] = g; }
+  return out;
+}
+function addVRows(s) {
+  const base = (s.tree || []).filter(r => r.kind !== 'vgroup'), rows = [];
+  base.forEach(r => { delete r.inGroup; });
+  for (const g of gOf(s.psd)) {
+    const ms = base.filter(r => g.lids.includes(r.lid));
+    if (!ms.length) continue;
+    ms.forEach(r => { r.inGroup = g.id; });
+    const x0 = Math.min(...ms.map(r => r.x)), y0 = Math.min(...ms.map(r => r.y));
+    const x1 = Math.max(...ms.map(r => r.x + r.w)), y1 = Math.max(...ms.map(r => r.y + r.h));
+    rows.push({ lid: g.id, name: g.name, kind: 'vgroup', depth: 0, x: x0, y: y0, w: x1 - x0, h: y1 - y0, selectable: true, fx: null, members: ms.length });
+  }
+  s.tree = [...rows, ...base];
+}
+// lids: layers (a 群組 picked among them brings its members; groups don't nest)
+async function makeGroup(s, lids, name) {
+  const g = gOf(s.psd), b = snap(), U = uOf(s.psd);
+  let ids = [];
+  for (const l of lids) { const old = g.find(x => x.id === l); ids.push(...(old ? old.lids : [l])); }
+  ids = [...new Set(ids.map(Number))].filter(l => l < 900000);
+  if (!ids.length) throw new Error('先選圖層');
+  for (const x of g) x.lids = x.lids.filter(l => !ids.includes(l));
+  const keep = g.filter(x => x.lids.length && !lids.includes(x.id));
+  for (const x of g) if (!keep.includes(x)) delete U[x.id];
+  const id = Math.max(900000, ...g.map(x => x.id)) + 1;
+  keep.push({ id, name: String(name || '').trim() || '群組', lids: ids });
+  vgroups[s.psd] = keep; saveG(s.psd); saveU(s.psd); commit(b);
+  selMulti = []; selLid = id;
+  await syncFx(s);
+  return { id, name: keep[keep.length - 1].name, lids: ids };
+}
+// Ctrl+click: add / remove one layer from the selection
+// (Shift／Ctrl＋click on one already picked = take it out of the selection, like PS)
+function pickMore(lid) {
+  const cur = selMulti.length ? selMulti : selLid != null ? [selLid] : [];
+  const next = cur.includes(lid) ? cur.filter(x => x !== lid) : [...cur, lid];
+  selLid = next.includes(lid) ? lid : next.length ? next[next.length - 1] : null;
+  selMulti = next.length > 1 ? next : [];
+}
+function groupShortcut(undoGroup) {
+  const s = current;
+  if (!s) return;
+  if (undoGroup) {
+    const r = (s.tree || []).find(x => x.lid === selLid);
+    const gid = r && (r.kind === 'vgroup' ? r.lid : r.inGroup);
+    if (gid) ungroup(s, gid); else toast('先選一個群組');
+    return;
+  }
+  const ids = selMulti.length ? selMulti : selLid != null ? [selLid] : [];   // like PS: one layer can be grouped too
+  if (!ids.length) return toast('先選圖層（Shift 連選、Ctrl 加選）');
+  makeGroup(s, ids, '群組 ' + (gOf(s.psd).length + 1)).then(g => toast(`已組成「${g.name}」`)).catch(e => alert(e.message));
+}
+// Right-click menu on a layer (list or preview). Right-clicking outside the selection selects that layer first.
+function layerMenu(s, lid, x, y) {
+  if (lid !== selLid && !selMulti.includes(lid)) { selLid = lid; selMulti = []; renderTree(s); }
+  const r = (s.tree || []).find(t => t.lid === lid);
+  if (!r) return;
+  const u = uOf(s.psd)[lid] || {}, gid = r.kind === 'vgroup' ? r.lid : r.inGroup, many = selMulti.length > 1;
+  const items = [
+    [`組成群組${many ? `（${selMulti.length} 個）` : ''}`, 'Ctrl+G', r.kind !== 'vgroup' || many, () => groupShortcut(false)],
+    ['解散群組', 'Ctrl+Shift+G', !!gid, () => ungroup(s, gid)],
+    '-',
+  ];
+  if (r.kind !== 'vgroup') {
+    if (r.psHidden && !u.hidden) items.push([u.show ? '隱藏（回到 PS 的樣子）' : '👁 顯示這個圖層', '', true, () => editFx(s, lid, x => { if (x.show) delete x.show; else x.show = true; })]);
+    else items.push([u.hidden ? '恢復這個圖層' : '刪除這個圖層', u.hidden ? '' : 'Delete', true, () => editFx(s, lid, x => { if (x.hidden) delete x.hidden; else x.hidden = true; })]);
+  }
+  const ids = selMulti.length ? selMulti : [lid];
+  items.push('-');
+  items.push(['拷貝特效', '', true, () => copyFx(s, lid)]);
+  items.push([`貼上特效${ids.length > 1 ? `（${ids.length} 個）` : ''}`, '', !!fxClip, () => pasteFx(s, ids, fxClip)]);
+  items.push(['清除特效', '', true, () => pasteFx(s, ids, { main: null, pulse: false, sweep: false, hue: false, stroke: false, step: false, enter: false })]);
+  items.push('-');
+  if (r.kind !== 'vgroup') items.push(['重新命名', '雙擊', true, () => { const el = document.querySelector(`#tree .lyr[data-lid="${lid}"] .ln`); if (el) el.ondblclick(new MouseEvent('dblclick')); }]);
+  if ((u.move || []).some(Boolean)) items.push(['位置還原', '', true, () => editFx(s, lid, x => { delete x.move; })]);
+  if (opsOf(s.psd).moves.length) items.push(['圖層順序還原成 PS 的樣子', '', true, () => resetOrder(s)]);
+  items.push(['全選圖層', 'Ctrl+A', true, () => selectAll(s)]);
+  items.push(['取消選取', '', true, () => { selLid = null; selMulti = []; renderTree(s); }]);
+  const m = $('#ctx');
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : `<div data-i="${i}" class="${it[2] ? '' : 'off'}"><span>${esc(it[0])}</span><kbd>${it[1]}</kbd></div>`).join('');
+  m.hidden = false;
+  m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + 'px';
+  m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + 'px';
+  m.querySelectorAll('div[data-i]').forEach(d => d.onclick = () => { const it = items[d.dataset.i]; if (!it[2]) return; m.hidden = true; it[3](); });
+}
+document.addEventListener('mousedown', e => { if (!e.target.closest('#ctx')) $('#ctx').hidden = true; });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') $('#ctx').hidden = true;
+  // Delete／Backspace on the picked layers = 刪除圖層 (like PS); not while typing in a box
+  if ((e.key === 'Delete' || e.key === 'Backspace') && current && !typingIn()) {
+    const ids = (selMulti.length ? selMulti : selLid != null ? [selLid] : []).filter(l => { const r = current.tree.find(t => t.lid === l); return r && r.kind !== 'vgroup'; });
+    if (!ids.length) return;
+    e.preventDefault();
+    const s = current, b = snap(), U = uOf(s.psd);
+    for (const l of ids) U[l] = { ...(U[l] || {}), hidden: true };
+    saveU(s.psd); commit(b); selLid = null; selMulti = [];
+    syncFx(s).then(() => toast(`已刪除 ${ids.length} 個圖層（Ctrl+Z 可以還原）`));
+    return;
+  }
+});
+async function ungroup(s, id) {
+  const b = snap(), U = uOf(s.psd);
+  vgroups[s.psd] = gOf(s.psd).filter(x => x.id !== id);
+  delete U[id];
+  saveG(s.psd); saveU(s.psd); commit(b);
+  selLid = null; selMulti = [];
+  await syncFx(s);
+}
+const hidAt = {};
+function hideMap(paths) {
+  const out = {};
+  for (const p of paths) { const h = hideOf(p); if (h.length) out[p] = h; }
+  return out;
+}
+function showMap(paths) {
+  const out = {};
+  for (const p of paths) { const h = showOf(p); if (h.length) out[p] = h; }
+  return out;
+}
+const isOff = (r, u) => !!((u || {}).hidden || (r.psHidden && !(u || {}).show));   // not drawn right now
+function effFx(nm, u) {
+  nm = nm || {}; u = u || {};
+  const main = 'main' in u ? u.main : (nm.main || null);
+  const pick = k => !!(k in u ? u[k] : nm[k]);
+  // noStep beats the panel's 逐格 boxes, so switching 逐格 off on a layer always means smooth
+  return { main, pulse: pick('pulse'), sweep: pick('sweep'), hue: pick('hue'), stroke: pick('stroke'), step: pick('step'), noStep: u.step === false,
+    enter: 'enter' in u ? u.enter : (nm.enter || false) };   // enter: 'left'|'zoom'|…|'default' (= the panel's 進場方式)
+}
+const anyFx = f => !!(f && (f.main || f.pulse || f.sweep || f.hue || f.stroke || f.enter));
+function prepare(nodes) {   // once per load: remember the name's effects
+  for (const n of nodes) { n.fxName = n.fx ? { ...n.fx } : null; if (n.children) prepare(n.children); }
+}
+// enter: 進場 takes its order from the same 接續順序 (always in order, no 輪流/錯開 setting)
+const SEQ = { bob: f => f.main === 'bob', sway: f => f.main === 'sway', flash: f => f.main === 'flash', pulse: f => f.pulse, sweep: f => f.sweep, hue: f => f.hue, enter: f => !!f.enter };
+const SEQNAME = { bob: '飄浮', sway: '搖擺', flash: '閃光', pulse: '縮放', sweep: '流光', hue: '跳色', enter: '進場' };
+const ENTER_NAME = { left: '從左滑入', right: '從右滑入', top: '從上滑入', bottom: '從下滑入', zoom: '放大進場', pop: '彈出', fade: '淡入', blur: '模糊變清楚', wipe: '擦出' };
+const enterKind = f => f.enter === true || f.enter === 'default' ? cfg.enterType : f.enter;
+function rebuildFx(s) { withCfg(s, () => rebuildFx0(s)); }
+function rebuildFx0(s) {
+  const U = uOf(s.psd);
+  (function walk(nodes) {
+    for (const n of nodes) {
+      const f = effFx(n.fxName, n.lid != null ? U[n.lid] : null);
+      n.fx = anyFx(f) ? f : null;
+      n.slot = {}; n.parent = null;   // (閃光 no longer rides along with a 搖擺 layer: it never moves)
+      n.mv = n.lid != null && U[n.lid] && U[n.lid].move || null;   // 移動 (dragged on the preview / arrow keys)
+      if (n.children) walk(n.children);
+    }
+  })(s.nodes);
+  // 接續: for each effect with 多層接續 on, the layers that have it take turns over one period.
+  // Order = the number set on the layer (same number = same moment), else the PS panel order
+  // (top first). Slot i of N starts i/N of a period later, so the loop still closes seamlessly.
+  const treeIdx = lid => { const i = (s.tree || []).findIndex(r => r.lid === lid); return i < 0 ? 9999 : i; };
+  const keyOf = n => { const o = (U[n.lid] || {}).order; return Number.isFinite(o) ? o : 1000 + treeIdx(n.lid); };
+  const moving = fxNodes(s).filter(n => n.fx);
+  // 不接續 (u.solo): the layer keeps moving on its own (no slot), the others still take turns
+  const solo = n => !!(U[n.lid] || {}).solo;
+  s.nSlot = {};   // effect → number of turns (0/absent = no layer has it)
+  for (const k in SEQ) {
+    const all = moving.filter(n => SEQ[k](n.fx)), list = all.filter(n => !solo(n));
+    const keys = [...new Set(list.map(keyOf))].sort((a, b) => a - b);
+    if (all.length) s.nSlot[k] = keys.length || 1;
+    for (const n of list) {
+      const i = keys.indexOf(keyOf(n));
+      n.slot[k] = [i + 1, keys.length];   // turn() reads this (輪流 or 錯開 per the panel)
+    }
+  }
+  [s.autoLoop, s.autoWhy] = autoLoopOf(s);
+  s.rows = null;
+}
+// Nodes that move, or that the name made move (so a switched-off one can be switched back on)
+function fxNodes(s) {
+  const out = [];
+  (function walk(ns) { for (const n of ns) { if (n.lid != null && (n.fx || n.fxName)) out.push(n); if (n.children) walk(n.children); } })(s.nodes);
+  return out;
+}
+const hasNode = (s, lid) => { let hit = false; (function walk(ns) { for (const n of ns) { if (n.lid === lid) hit = true; if (n.children) walk(n.children); } })(s.nodes); return hit; };
+const FXNAME = { bob: '飄浮', sway: '搖擺', flash: '閃光' };
+const panelStep = f => (f.main === 'bob' && cfg.bobStep) || (f.main === 'sway' && cfg.swayStep) || (f.pulse && cfg.pulseStep);
+
+// Change one layer's manual overrides (fn edits u in place), then redraw; splits the layer
+// out of its static block first when the tool is what makes it move.
+async function editFx(s, lid, fn) {
+  const b = snap(), U = uOf(s.psd);
+  const u = { ...(U[lid] || {}) };
+  fn(u);
+  if (Object.keys(u).length) U[lid] = u; else delete U[lid];
+  saveU(s.psd); commit(b);
+  await syncFx(s);
+}
+async function syncFx(s) {
+  const U = uOf(s.psd);
+  const missing = Object.keys(U).some(id => { const u = U[id]; return (u.main || u.pulse || u.sweep || u.hue || u.stroke || u.enter || u.move) && !u.hidden && !hasNode(s, Number(id)); });
+  if (missing || visKey(s.psd) !== (hidAt[s.psd] || '|')) await reloadPsd(s.psd);
+  for (const x of scenes) if (x.psd === s.psd) rebuildFx(x);
+  if (current) { renderLayers(current); renderTree(current); }
+  renderList(); renderSlices(); showLoop();
+}
+function renderLayers(s) {
+  const U = uOf(s.psd);
+  const rows = fxNodes(s).map(n => {
+    const nm = n.fxName || {}, u = U[n.lid] || {}, f = effFx(nm, u);
+    // a chip per effect the name or the tool gave this layer; struck through when off
+    const chips = [];
+    const mainName = f.main || nm.main;
+    if (mainName) chips.push(['main', FXNAME[mainName], !!f.main]);
+    if (f.pulse || nm.pulse) chips.push(['pulse', '縮放', f.pulse]);
+    if (f.sweep || nm.sweep) chips.push(['sweep', '流光', f.sweep]);
+    if (f.hue || nm.hue) chips.push(['hue', '跳色', f.hue]);
+    if (f.stroke || nm.stroke) chips.push(['stroke', '描邊', f.stroke]);
+    if (f.enter || nm.enter) chips.push(['enter', '進場：' + (ENTER_NAME[enterKind(f.enter ? f : { enter: nm.enter })] || ''), !!f.enter]);
+    // 逐格: on when the name/tool asks for it or a ticked panel box reaches this layer (flash/sweep never step)
+    const stepOn = !f.noStep && (f.step || panelStep(f));
+    if (stepOn || f.noStep) chips.push(['step', nm.step || u.step === true || !panelStep(f) ? '逐格' : '逐格（面板）', stepOn]);
+    const on = anyFx(f);
+    // 接續: which turn this layer takes (only for effects with 多層接續 on and more than one layer)
+    const seqK = Object.keys(n.slot || {}).filter(k => (cfg[k + 'Seq'] || k === 'enter') && n.slot[k][1] > 1);
+    const turn = seqK.length ? `<span class="seq" title="${seqK.map(k => SEQNAME[k] + ' 第 ' + n.slot[k][0] + '／' + n.slot[k][1]).join('、')}">第 ${n.slot[seqK[0]][0]}／${n.slot[seqK[0]][1]}</span>` : '';
+    return `<div class="row${on ? '' : ' muted'}">${chips.map(([k, lab, act]) =>
+      `<button class="tag${act ? '' : ' off'}" data-lid="${n.lid}" data-f="${k}" data-act="${act ? 1 : 0}" title="${act ? '點一下取消這個特效' : '點一下恢復'}">${lab}</button>`).join('')}
+      <span class="nm">${esc(n.name)}</span>${turn}
+      ${on && !u.solo ? `<input class="ord" type="number" min="1" data-lid="${n.lid}" value="${Number.isFinite(u.order) ? u.order : ''}" placeholder="順序" title="接續順序：1 最先，同一個號碼會同時；空白＝照圖層順序">` : ''}
+      ${on ? `<label class="solo" title="勾了這層就不跟其他層輪流／錯開，自己一直連續動"><input type="checkbox" class="solo" data-lid="${n.lid}"${u.solo ? ' checked' : ''}>不接續</label>` : ''}
+      <button class="rowbtn" data-lid="${n.lid}" data-all="${on ? 'off' : 'on'}">${on ? '全部關閉' : '恢復'}</button></div>`;
+  });
+  if (!rows.length) rows.push('<div class="rules">這個畫板還沒有會動的圖層：圖層名稱加「動」＋關鍵字，或在左邊「圖層」點選後加特效</div>');
+  else rows.unshift('<div class="rules">點特效標籤可以取消／恢復那個特效。好幾層同一個特效時，勾右邊的「多層接續」就會一個接一個，「順序」填 1、2、3…自己排（同號碼＝同時）</div>');
+  s.warnings.forEach(w => rows.push(`<div class="warn">⚠ ${esc(w)}</div>`));
+  $('#layers').innerHTML = rows.join('');
+  $('#layers').querySelectorAll('button.tag').forEach(btn => btn.onclick = () => {
+    const lid = Number(btn.dataset.lid), k = btn.dataset.f, act = btn.dataset.act === '1';
+    const nm = (fxNodes(s).find(n => n.lid === lid) || {}).fxName || {};
+    editFx(s, lid, u => {
+      if (k === 'step') { if (act) u.step = false; else delete u.step; return; }
+      const fromName = k === 'main' ? !!nm.main : !!nm[k];
+      if (act) { if (fromName) u[k] = k === 'main' ? null : false; else delete u[k]; }
+      else delete u[k];
+    });
+  });
+  $('#layers').querySelectorAll('button.rowbtn').forEach(btn => btn.onclick = () => {
+    const lid = Number(btn.dataset.lid);
+    editFx(s, lid, u => {
+      const order = u.order;   // switching effects off/on keeps the layer's place in line
+      for (const k of Object.keys(u)) delete u[k];
+      if (btn.dataset.all === 'off') Object.assign(u, { main: null, pulse: false, sweep: false, step: false, enter: false });
+      if (Number.isFinite(order)) u.order = order;
+    });
+  });
+  $('#layers').querySelectorAll('input.ord').forEach(inp => inp.onchange = () => setOrder(s, Number(inp.dataset.lid), inp.value));
+  $('#layers').querySelectorAll('input.solo').forEach(cb => cb.onchange = () =>
+    editFx(s, Number(cb.dataset.lid), u => { if (cb.checked) u.solo = true; else delete u.solo; }));
+}
+function setOrder(s, lid, v) {
+  editFx(s, lid, u => { const n = parseInt(v, 10); if (Number.isFinite(n) && n > 0) u.order = n; else delete u.order; });
+}
+
+// ---------- 圖層清單（左邊）：選一層，直接加特效 ----------
+let selLid = null, selMulti = [];   // selMulti: Shift／Ctrl 多選 (to make a 群組)
+let moveDrag = null, marq = null;     // preview: layers being dragged ({ids, dx, dy}); 圈選 box
+function renderTree(s) {
+  const box = $('#tree');
+  if (!s || !s.tree) { box.innerHTML = ''; return; }
+  const U = uOf(s.psd), col = colOf(s.psd);
+  let skipBelow = Infinity;   // inside a folded folder
+  box.innerHTML = s.tree.map(r => {
+    if (r.depth > skipBelow) return '';
+    skipBelow = r.kind === 'group' && col.has(r.lid) ? r.depth : Infinity;
+    const f = effFx(r.fx, U[r.lid]), moving = anyFx(f);
+    const icon = r.kind === 'vgroup' ? '🔗' : r.kind === 'group' ? '📁' : r.kind === 'type' ? 'T' : '▢';
+    const gname = r.inGroup ? (gOf(s.psd).find(g => g.id === r.inGroup) || {}).name : '';
+    const u = U[r.lid] || {}, gone = !!u.hidden, off = r.psHidden && !u.show;   // off = hidden in PS, not turned on here
+    const tag = gone ? '<span class="gonetag">已刪除</span>' : off ? '<span class="gonetag">PS 隱藏</span>' : moving ? '<span class="dot" title="這層會動">●</span>' : '';
+    // PS 隱藏的圖層: 👁 turns it on here (PSD unchanged); turned-on ones get 隱藏 back
+    const btn = r.kind === 'vgroup'
+      ? `<button class="eye ungroup" data-lid="${r.lid}" title="解散這個群組（圖層照原樣回去）">解散</button>`
+      : r.psHidden && !gone
+      ? `<button class="eye" data-lid="${r.lid}" title="${u.show ? '恢復成 PS 的樣子（隱藏）' : '在小工具裡顯示這個圖層（PSD 不會改，可以 Ctrl+Z）'}">${u.show ? '隱藏' : '👁 顯示'}</button>`
+      : `<button class="del" data-lid="${r.lid}" title="${gone ? '恢復這個圖層' : '刪除這個圖層：預覽和輸出都不出現（PSD 不會改，可以恢復或 Ctrl+Z）'}">${gone ? '恢復' : '✕'}</button>`;
+    const gtag = r.kind === 'vgroup' ? `<span class="gonetag">${r.members} 層</span>` : gname ? `<span class="gonetag" title="在群組「${esc(gname)}」裡">🔗</span>` : '';
+    const tw = r.kind === 'group' ? `<span class="tw" data-tw="${r.lid}" title="展開／收合">${col.has(r.lid) ? '▸' : '▾'}</span>` : '<span class="tw"></span>';
+    return `<div class="lyr${r.lid === selLid || selMulti.includes(r.lid) ? ' sel' : ''}${r.selectable ? '' : ' dis'}${gone ? ' gone' : ''}${off ? ' pshid' : ''}" data-lid="${r.lid}" style="padding-left:${4 + r.depth * 14}px"
+      draggable="${r.kind !== 'vgroup'}" title="${r.selectable ? '點選加特效；Shift 連選、Ctrl 加選；拖曳改順序；雙擊改名稱' : '調整圖層／剪裁遮色片會跟著底下那層，不能單獨動'}">
+      ${tw}<span class="ic">${icon}</span><span class="ln">${esc(r.name)}</span>${gtag}${tag}${btn}</div>`;
+  }).join('');
+  box.querySelectorAll('button.del').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    editFx(s, Number(b.dataset.lid), u => { if (u.hidden) delete u.hidden; else u.hidden = true; });
+  });
+  box.querySelectorAll('button.eye:not(.ungroup)').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    editFx(s, Number(b.dataset.lid), u => { if (u.show) delete u.show; else u.show = true; });
+  });
+  box.querySelectorAll('button.ungroup').forEach(b => b.onclick = e => { e.stopPropagation(); ungroup(s, Number(b.dataset.lid)); });
+  box.querySelectorAll('.lyr').forEach(el => el.oncontextmenu = e => { e.preventDefault(); layerMenu(s, Number(el.dataset.lid), e.clientX, e.clientY); });
+  box.querySelectorAll('[data-tw]').forEach(t => t.onclick = e => {
+    e.stopPropagation();
+    const id = Number(t.dataset.tw);
+    if (col.has(id)) col.delete(id); else col.add(id);
+    saveCol(s.psd); renderTree(s);
+  });
+  // 雙擊改名稱 (Enter／點別的地方 = 好，Esc = 取消；清空 = 回到 PS 的名稱)
+  box.querySelectorAll('.lyr .ln').forEach(el => el.ondblclick = e => {
+    e.stopPropagation();
+    const lid = Number(el.parentNode.dataset.lid), inp = document.createElement('input');
+    inp.className = 'rn'; inp.value = el.textContent;
+    el.replaceWith(inp); inp.focus(); inp.select();
+    let done = false;
+    const finish = ok => { if (done) return; done = true; if (ok && inp.value !== el.textContent) renameLayer(s, lid, inp.value); else renderTree(s); };
+    inp.onkeydown = k => { k.stopPropagation(); if (k.key === 'Enter') finish(true); if (k.key === 'Escape') finish(false); };
+    inp.onblur = () => finish(true);
+    inp.onclick = k => k.stopPropagation();
+  });
+  // 拖曳改順序: top / bottom third of a row = above / below it, the middle of a folder = into it
+  let dragIds = null;
+  const whereOf = (el, e) => {
+    const b = el.getBoundingClientRect(), y = (e.clientY - b.top) / b.height;
+    const folder = (s.tree.find(r => r.lid === Number(el.dataset.lid)) || {}).kind === 'group';
+    return folder && y > 0.3 && y < 0.7 ? 'into' : y < 0.5 ? 'above' : 'below';
+  };
+  const clearDrop = () => box.querySelectorAll('.drop-above,.drop-below,.drop-into').forEach(x => x.classList.remove('drop-above', 'drop-below', 'drop-into'));
+  box.querySelectorAll('.lyr[draggable="true"]').forEach(el => {
+    el.ondragstart = e => {
+      const lid = Number(el.dataset.lid), picked = selMulti.length ? selMulti : selLid != null ? [selLid] : [];
+      dragIds = (picked.includes(lid) ? picked : [lid]).filter(l => l < 900000);
+      e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(lid));
+    };
+    el.ondragover = e => {
+      if (!dragIds || dragIds.includes(Number(el.dataset.lid))) return;
+      e.preventDefault(); clearDrop(); el.classList.add('drop-' + whereOf(el, e));
+    };
+    el.ondragleave = () => el.classList.remove('drop-above', 'drop-below', 'drop-into');
+    el.ondrop = e => {
+      e.preventDefault(); clearDrop();
+      if (dragIds) reorder(s, dragIds, Number(el.dataset.lid), whereOf(el, e));
+      dragIds = null;
+    };
+    el.ondragend = () => { clearDrop(); dragIds = null; };
+  });
+  // click = one layer; Shift = everything from the last clicked one to here; Ctrl = add / remove one
+  box.querySelectorAll('.lyr:not(.dis)').forEach(el => el.onclick = e => {
+    const lid = Number(el.dataset.lid);
+    if (e.shiftKey && selLid != null) {
+      const ids = [...box.querySelectorAll('.lyr:not(.dis)')].map(x => Number(x.dataset.lid));
+      const a = ids.indexOf(selLid), b = ids.indexOf(lid);
+      selMulti = ids.slice(Math.min(a, b), Math.max(a, b) + 1);
+    } else if (e.ctrlKey || e.metaKey) {
+      pickMore(lid);
+    } else { selMulti = []; selLid = lid === selLid ? null : lid; }
+    renderTree(s);
+  });
+  renderEditor(s);
+}
+function renderEditor(s) {
+  const ed = $('#fxEdit');
+  if (s && selMulti.length > 1) {
+    ed.innerHTML = `<div class="edname">已選 ${selMulti.length} 個圖層</div>
+      <div class="edrow" style="align-items:center">名稱 <input id="gName" type="text" value="群組 ${gOf(s.psd).length + 1}" style="width:120px">
+      <button class="chip on" id="gMake">組成群組</button></div>
+      <div class="rules">組起來的圖層會合成一張、一起動；特效加在群組上。Shift 連選、Ctrl 加選（預覽上也可以），Ctrl+G 組成、Ctrl+Shift+G 解散，右鍵有選單。</div>`;
+    $('#gMake').onclick = () => makeGroup(s, selMulti, $('#gName').value).catch(e => alert(e.message));
+    return;
+  }
+  const r = s && s.tree && s.tree.find(x => x.lid === selLid);
+  if (!r) { ed.innerHTML = '<div class="rules">點上面任一個圖層，就可以幫它加特效</div>'; return; }
+  const U = uOf(s.psd), u = U[r.lid] || {}, nm = r.fx || {}, f = effFx(nm, u);
+  const mains = [[null, '不動'], ['bob', '飄浮'], ['sway', '搖擺'], ['flash', '閃光']];
+  const tog = [['pulse', '縮放'], ['sweep', '流光'], ['hue', '跳色'], ['stroke', '描邊'], ['step', '逐格']];
+  ed.innerHTML = `<div class="edname">${esc(r.name)}</div>
+    <div class="edrow">${mains.map(([v, lab]) => `<button class="chip${f.main === v ? ' on' : ''}" data-main="${v}">${lab}</button>`).join('')}</div>
+    <div class="edrow">${tog.map(([k, lab]) => {
+      const on = k === 'step' ? f.step : f[k];
+      return `<button class="chip${on ? ' on' : ''}" data-tog="${k}">${lab}</button>`;
+    }).join('')}</div>
+    <div class="edrow" style="align-items:center">進場 <select id="edEnter"><option value="">不進場</option><option value="default">照面板（${ENTER_NAME[cfg.enterType]}）</option>
+      ${Object.entries(ENTER_NAME).map(([v, lab]) => `<option value="${v}">${lab}</option>`).join('')}</select></div>
+    ${anyFx(f) ? `<div class="edrow" style="align-items:center">接續順序 <input id="edOrder" class="ord" type="number" min="1" value="${Number.isFinite(u.order) ? u.order : ''}" placeholder="自動">
+      <span class="rules">同號碼＝同時；要勾「多層接續」</span></div>` : ''}
+    ${Object.keys(u).length ? '<button class="rowbtn" id="edReset">還原成圖層名稱的設定</button>' : ''}`;
+  const eo = $('#edOrder'); if (eo) eo.onchange = () => setOrder(s, r.lid, eo.value);
+  const ee = $('#edEnter');
+  ee.value = f.enter === true ? 'default' : (f.enter || '');
+  ee.onchange = () => editFx(s, r.lid, x => { const v = ee.value || false; if (v === (nm.enter || false)) delete x.enter; else x.enter = v; });
+  ed.querySelectorAll('[data-main]').forEach(b => b.onclick = () => editFx(s, r.lid, x => {
+    const v = b.dataset.main === 'null' ? null : b.dataset.main;
+    if (v === (nm.main || null)) delete x.main; else x.main = v;
+  }));
+  ed.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => editFx(s, r.lid, x => {
+    const k = b.dataset.tog, now = k === 'step' ? f.step : f[k], want = !now;
+    if (want === !!nm[k]) delete x[k]; else x[k] = want;
+  }));
+  const rs = $('#edReset'); if (rs) rs.onclick = () => editFx(s, r.lid, x => { for (const k of Object.keys(x)) delete x[k]; });
+}
+// Re-read one PSD with the layers the tool animates split out; keeps each artboard's guides etc.
+async function reloadPsd(psd) {
+  toast('拆出圖層中…');
+  const r = await api('/api/load', { paths: [psd], split: splitMap(), hide: hideMap([psd]), show: showMap([psd]), groups: groupsMap([psd]), ops: opsMap([psd]) });
+  hidAt[psd] = visKey(psd);
+  for (const ns of r.scenes) {
+    const i = scenes.findIndex(x => x.id === ns.id);
+    if (i < 0) continue;
+    const old = scenes[i];
+    prepare(ns.nodes);
+    await loadImages(ns.nodes);
+    Object.assign(ns, { checked: old.checked, guides: old.guides, segMode: old.segMode, done: old.done });
+    addVRows(ns);
+    rebuildFx(ns);
+    scenes[i] = ns;
+    if (current === old) current = ns;
+  }
+  toast('完成');
+}
+
+function loadImages(nodes) {
+  const all = [];
+  for (const n of nodes) {
+    if (n.src) all.push(new Promise((ok, bad) => { n.img = new Image(); n.img.onload = ok; n.img.onerror = () => bad(new Error('拆出來的圖讀不到：' + n.src)); n.img.src = n.src; }));
+    if (n.children) all.push(loadImages(n.children));
+  }
+  return Promise.all(all);
+}
+
+// ---------- 切圖: horizontal guides, each band exported on its own ----------
+// Which rows move: draw the loop at half size a few dozen times and mark every row
+// that ever differs from the first frame. Bands with no moving row become still images.
+function motionRows(s) { return s.rows || withCfg(s, () => motionRows0(s)); }
+function motionRows0(s) {
+  const k = 0.5, W = Math.ceil(s.w * k), H = Math.ceil(s.h * k), N = 24;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  const rows = new Uint8Array(s.h), content = new Uint8Array(s.h);
+  const bg = (s.bg || cfg.bg || '#ffffff').replace('#', '').match(/../g).map(h => parseInt(h, 16));
+  let base = null;
+  for (let i = 0; i < N; i++) {
+    drawScene(x, s, i / N * loopLen(), k);
+    const d = x.getImageData(0, 0, W, H).data;
+    if (!base) {
+      base = d;
+      // rows that hold anything but plain background (a guide there cuts text/picture)
+      for (let y = 0; y < H; y++) {
+        for (let p = y * W * 4, e = p + W * 4; p < e; p += 4) {
+          if (Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]) > 30) {
+            for (let r = Math.floor(y / k); r < Math.ceil((y + 1) / k); r++) if (r < s.h) content[r] = 1;
+            break;
+          }
+        }
+      }
+      s.content = content;
+      continue;
+    }
+    for (let y = 0; y < H; y++) {
+      if (rows[Math.floor(y / k)]) continue;
+      for (let p = y * W * 4, e = p + W * 4; p < e; p++) {
+        if (Math.abs(d[p] - base[p]) > 6) {
+          for (let r = Math.floor(y / k) - 1; r <= Math.ceil((y + 1) / k); r++) if (r >= 0 && r < s.h) rows[r] = 1;
+          break;
+        }
+      }
+    }
+  }
+  return s.rows = rows;
+}
+function slicesOf(s) {
+  const ys = [0, ...[...s.guides].sort((a, b) => a - b), s.h], rows = motionRows(s), out = [];
+  for (let i = 0; i + 1 < ys.length; i++) {
+    const y0 = ys[i], y1 = ys[i + 1];
+    if (y1 - y0 < 1) continue;
+    let detected = false;
+    for (let y = y0; y < y1 && !detected; y++) detected = !!rows[y];
+    // a band can be forced to GIF / PNG from the 切圖 bar; keyed by its edges, so
+    // moving a guide puts that band back on 自動
+    const key = y0 + '-' + y1, mode = (s.segMode || {})[key] || 'auto';
+    out.push({ y0, y1, key, mode, detected, moving: mode === 'auto' ? detected : mode === 'gif' });
+  }
+  return out;
+}
+const cuts = (s, y) => { const r = motionRows(s); return !!(r[y - 1] && r[y]); };
+const slashes = (s, y) => { motionRows(s); const c = s.content; return !!(c[y - 1] && c[y]); };
+const vidFmts = () => [cfg.doGif && 'GIF', cfg.doMp4 && 'MP4'].filter(Boolean).join('+') || '（沒勾格式）';
+const segLabel = g => g.moving ? '動態 ' + vidFmts() : '靜態 ' + cfg.stillFmt.toUpperCase();
+const guideKey = s => 'guides:' + s.psd + '|' + s.title;
+function saveGuides(s) { try { localStorage.setItem(guideKey(s), JSON.stringify(s.guides)); } catch (e) {} }
+
+function drawGuides(ctx, s) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  // the layer picked in the 圖層 list: dashed box where it sits in the PSD
+  const picked = [...new Set([selLid, ...selMulti])].map(l => l != null && s.tree && s.tree.find(r => r.lid === l)).filter(Boolean);
+  const slw = Math.max(2, s.w / 400);
+  if (picked.length) {
+    ctx.lineWidth = slw; ctx.setLineDash([slw * 4, slw * 3]);
+    ctx.strokeStyle = '#ff2d7a';
+    for (const sel of picked) {
+      const o = offsetOf(s, sel.lid);
+      ctx.strokeRect(sel.x + o[0], sel.y + o[1], sel.w, sel.h);
+    }
+    ctx.setLineDash([]);
+  }
+  if (marq) {   // 圈選 box being dragged
+    ctx.lineWidth = slw; ctx.setLineDash([slw * 3, slw * 3]); ctx.strokeStyle = '#2d7aff';
+    ctx.fillStyle = 'rgba(45,122,255,.08)';
+    const x = Math.min(marq.x0, marq.x1), y = Math.min(marq.y0, marq.y1), w = Math.abs(marq.x1 - marq.x0), h = Math.abs(marq.y1 - marq.y0);
+    ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+  }
+  if (!s.guides.length) return;
+  const lw = Math.max(2, s.w / 500), fs = Math.round(Math.max(14, s.w / 45));
+  ctx.font = `bold ${fs}px "Microsoft JhengHei", sans-serif`;
+  ctx.textBaseline = 'top';
+  slicesOf(s).forEach((g, i) => {
+    const text = `${i + 1}　${segLabel(g)}`, tw = ctx.measureText(text).width;
+    ctx.fillStyle = g.moving ? 'rgba(194,81,47,.9)' : 'rgba(0,120,190,.9)';
+    ctx.fillRect(lw * 3, g.y0 + lw * 3, tw + fs * 0.8, fs * 1.4);
+    ctx.fillStyle = '#fff'; ctx.fillText(text, lw * 3 + fs * 0.4, g.y0 + lw * 3 + fs * 0.2);
+  });
+  ctx.lineWidth = lw; ctx.setLineDash([lw * 5, lw * 3]);
+  for (const y of s.guides) {
+    ctx.strokeStyle = cuts(s, y) ? '#e0245e' : slashes(s, y) ? '#f0a000' : '#00a2ff';
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(s.w, y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+function renderSlices() {
+  const el = $('#slices'), s = current;
+  if (!s) { el.innerHTML = ''; return; }
+  if (!s.guides.length) {
+    el.innerHTML = '<span class="hint">切圖：從預覽上方的尺標往下拉出參考線（水平），拖曳移動，右鍵、拉回尺標或拖出畫面刪除。沒有參考線就整張輸出。點預覽上的物件＝選到那個圖層。</span>';
+    return;
+  }
+  const segs = slicesOf(s), bad = s.guides.filter(y => cuts(s, y)), thru = s.guides.filter(y => !cuts(s, y) && slashes(s, y));
+  const pick = (g, i) => `<select data-seg="${g.key}" title="第 ${i + 1} 段要輸出成什麼">
+      <option value="auto" ${g.mode === 'auto' ? 'selected' : ''}>自動（${g.detected ? '有動態' : '沒動態'}）</option>
+      <option value="gif" ${g.mode === 'gif' ? 'selected' : ''}>強制動態 ${vidFmts()}</option>
+      <option value="png" ${g.mode === 'png' ? 'selected' : ''}>強制靜態 ${cfg.stillFmt.toUpperCase()}</option></select>`;
+  el.innerHTML = `<span class="hint">切成 ${segs.length} 張：` +
+    segs.map((g, i) => `<span class="seg">${pick(g, i)} ${i + 1}. ${g.y1 - g.y0}px ${segLabel(g)}</span>`).join('') +
+    (bad.length ? `<br><span class="warn">⚠ 紅色參考線切過會動的地方，動起來會被切掉一塊，建議移開</span>` : '') +
+    (thru.length ? `<br><span class="warn">⚠ 黃色參考線切過文字或圖片（拼回去沒問題，只是會分在兩張）</span>` : '') +
+    `</span><button id="bClearGuides">清除參考線</button>`;
+  $('#bClearGuides').onclick = () => { const b = snap(); s.guides = []; saveGuides(s); commit(b); renderSlices(); };
+  el.querySelectorAll('select[data-seg]').forEach(sel => sel.onchange = () => {
+    const b = snap();
+    s.segMode = { ...(s.segMode || {}), [sel.dataset.seg]: sel.value };
+    commit(b);
+    renderSlices();
+  });
+}
+(function guideMouse() {
+  const cv = $('#cv');
+  let drag = null, before = null;   // before = snapshot at mousedown, committed if the drag changed anything
+  const sceneY = e => { const r = cv.getBoundingClientRect(); return Math.round((e.clientY - r.top) / r.height * current.h); };
+  function near(e) {
+    const r = cv.getBoundingClientRect(), tol = 8 * current.h / r.height, y = sceneY(e);
+    let best = -1, bd = tol;
+    current.guides.forEach((g, i) => { const d = Math.abs(g - y); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+  const sceneX = e => { const r = cv.getBoundingClientRect(); return Math.round((e.clientX - r.left) / r.width * current.w); };
+  // Click on the picture = select the layer there (like PS 自動選取); on a guide = move that guide
+  cv.addEventListener('mousedown', e => {
+    if (!current || e.button !== 0) return;
+    const i = near(e);
+    if (i >= 0) { before = snap(); drag = i; e.preventDefault(); return; }
+    // like PS 移動工具 (自動選取): press on a layer = pick it and drag to move; press on empty
+    // space (or the background) = 圈選 a box; Ctrl／Shift adds to what is already picked
+    const x = sceneX(e), y = sceneY(e), lid = pickLayer(current, x, y), hit = lid != null && !pickLayer.fb;
+    const add = e.ctrlKey || e.shiftKey || e.metaKey;
+    e.preventDefault();
+    if (!hit) {
+      if (!add) { selLid = null; selMulti = []; }
+      marq = { x0: x, y0: y, x1: x, y1: y, add };
+      renderTree(current);
+      return;
+    }
+    if (add) pickMore(lid);
+    else if (lid !== selLid && !selMulti.includes(lid)) { selLid = lid; selMulti = []; }
+    if (!add) moveDrag = { ids: [...new Set(selMulti.length ? selMulti : [selLid])], x0: x, y0: y, dx: 0, dy: 0 };
+    revealRow(current, lid);
+    renderTree(current);
+  });
+  // 圈選 can also start outside the artboard (the checkered area around it), like PS
+  $('#view').addEventListener('mousedown', e => {
+    const v = $('#view');
+    if (!current || e.button !== 0 || e.target !== v) return;
+    if (e.offsetX >= v.clientWidth || e.offsetY >= v.clientHeight) return;   // the scrollbars
+    const add = e.ctrlKey || e.shiftKey || e.metaKey;
+    if (!add) { selLid = null; selMulti = []; }
+    marq = { x0: sceneX(e), y0: sceneY(e), x1: sceneX(e), y1: sceneY(e), add };
+    e.preventDefault();
+    renderTree(current);
+  });
+  cv.addEventListener('mousemove', e => { if (current && drag === null && !moveDrag && !marq) cv.style.cursor = near(e) >= 0 ? 'ns-resize' : 'default'; });
+  window.addEventListener('mousemove', e => {
+    if (!current) return;
+    if (moveDrag) { moveDrag.dx = sceneX(e) - moveDrag.x0; moveDrag.dy = sceneY(e) - moveDrag.y0; cv.style.cursor = 'move'; }
+    if (marq) { marq.x1 = sceneX(e); marq.y1 = sceneY(e); }
+  });
+  window.addEventListener('mouseup', () => {
+    if (!current) return;
+    if (moveDrag) {
+      const { ids, dx, dy } = moveDrag;
+      moveDrag = null;
+      if (Math.abs(dx) + Math.abs(dy) >= 2) nudge(current, ids, dx, dy);
+    }
+    if (marq) {
+      const m = marq; marq = null;
+      if (Math.abs(m.x1 - m.x0) + Math.abs(m.y1 - m.y0) >= 4) {
+        const ids = layersIn(current, Math.min(m.x0, m.x1), Math.min(m.y0, m.y1), Math.max(m.x0, m.x1), Math.max(m.y0, m.y1));
+        selMulti = [...new Set([...(m.add ? (selMulti.length ? selMulti : selLid != null ? [selLid] : []) : []), ...ids])];
+        selLid = selMulti[0] != null ? selMulti[0] : null;
+        if (selMulti.length < 2) selMulti = [];
+      }
+      renderTree(current);
+    }
+  });
+  // 尺標: press and pull down to bring out a new guide (released back on the ruler = nothing added)
+  $('#ruler').addEventListener('mousedown', e => {
+    if (!current || e.button !== 0) return;
+    before = snap();
+    current.guides.push(-50); drag = current.guides.length - 1; e.preventDefault();
+  });
+  const outsideView = e => { const v = $('#view').getBoundingClientRect(); return e.clientY < v.top || e.clientY > v.bottom; };
+  window.addEventListener('mousemove', e => {
+    if (drag === null) return;
+    // zoomed in: nudge the view when dragging along its top/bottom edge
+    const view = $('#view'), v = view.getBoundingClientRect();
+    if (e.clientY > v.top && e.clientY < v.top + 30) view.scrollTop -= 24;
+    else if (e.clientY < v.bottom && e.clientY > v.bottom - 30) view.scrollTop += 24;
+    current.guides[drag] = Math.max(-50, Math.min(current.h + 50, sceneY(e)));
+  });
+  window.addEventListener('mouseup', e => {
+    if (drag === null) return;
+    const y = current.guides[drag];
+    // dragged off the picture, or out of the preview area = delete
+    if (y <= 1 || y >= current.h - 1 || outsideView(e)) current.guides.splice(drag, 1);
+    drag = null;
+    current.guides = [...new Set(current.guides)].sort((a, b) => a - b);
+    saveGuides(current); commit(before); renderSlices();
+  });
+  cv.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (!current) return;
+    const i = near(e);
+    if (i >= 0) { const b = snap(); current.guides.splice(i, 1); saveGuides(current); commit(b); renderSlices(); return; }
+    const lid = pickLayer(current, sceneX(e), sceneY(e));
+    if (lid != null) layerMenu(current, lid, e.clientX, e.clientY);
+  });
+})();
+
+// The layer at scene point (x, y): the topmost one in the PS layer order whose picture covers it.
+// Layers cut out on their own are tested pixel by pixel (transparent spots fall through);
+// layers baked into a static block only have their box, so a near full-size one (a background)
+// is only taken when nothing else is there.
+const pickCtx = (() => { const c = document.createElement('canvas'); c.width = c.height = 41; return c.getContext('2d', { willReadFrequently: true }); })();
+function pickLayer(s, x, y) {
+  const U = uOf(s.psd), nodes = new Map();
+  (function walk(ns) { for (const n of ns) { if (n.lid != null) nodes.set(n.lid, n); if (n.children) walk(n.children); } })(s.nodes);
+  const fr = psFrame(tNow, s);
+  // a few screen pixels around the click count too, so a click between two letters still hits the text
+  const rad = Math.min(20, Math.max(2, Math.round(6 / viewScale())));
+  let fallback = null;
+  pickLayer.fb = false;
+  for (const r of s.tree || []) {
+    if (r.kind === 'group' || !r.selectable || isOff(r, U[r.lid])) continue;
+    const o = offsetOf(s, r.lid), lx = x - o[0], ly = y - o[1];
+    if (lx < r.x || ly < r.y || lx >= r.x + r.w || ly >= r.y + r.h) continue;
+    const n = nodes.get(r.lid);
+    if (n && n.fv && !n.fv[fr]) continue;              // PS 影格: not showing in this frame
+    if (n && n.img) {
+      const d = 2 * rad + 1;
+      pickCtx.clearRect(0, 0, d, d);
+      pickCtx.drawImage(n.img, n.x - lx + rad, n.y - ly + rad);
+      const px = pickCtx.getImageData(0, 0, d, d).data;
+      for (let i = 3; i < px.length; i += 4) if (px[i] > 20) return r.inGroup || r.lid;
+      continue;
+    }
+    if (r.w * r.h > 0.8 * s.w * s.h) { if (fallback == null) fallback = r.inGroup || r.lid; continue; }
+    return r.inGroup || r.lid;
+  }
+  pickLayer.fb = fallback != null;
+  return fallback;
+}
+// Where layer lid shows now: its saved 移動 plus the drag in progress
+function offsetOf(s, lid) {
+  const u = uOf(s.psd)[lid] || {}, mv = u.move || [0, 0];
+  const d = moveDrag && moveDrag.ids.includes(lid) ? [moveDrag.dx, moveDrag.dy] : [0, 0];
+  return [mv[0] + d[0], mv[1] + d[1]];
+}
+// 圈選: the layers a box touches (not PS folders, backgrounds or hidden ones; a 群組's members count as the 群組)
+function layersIn(s, x0, y0, x1, y1) {
+  const U = uOf(s.psd), out = [];
+  for (const r of s.tree || []) {
+    if (r.kind === 'group' || r.kind === 'vgroup' || !r.selectable || isOff(r, U[r.lid])) continue;
+    if (r.w * r.h > 0.8 * s.w * s.h || !r.w || !r.h) continue;
+    const o = offsetOf(s, r.inGroup || r.lid);
+    if (r.x + o[0] < x1 && r.x + o[0] + r.w > x0 && r.y + o[1] < y1 && r.y + o[1] + r.h > y0) out.push(r.inGroup || r.lid);
+  }
+  return [...new Set(out)];
+}
+// Move layers by (dx, dy) px: saved as u.move (PSD unchanged); a layer baked into a static block
+// gets cut out on its own first. Arrow keys / drags in a row within 1.5 s are one Ctrl+Z step.
+let nudgeT = 0;
+function nudge(s, ids, dx, dy) {
+  const b = snap(), U = uOf(s.psd);
+  for (const id of ids) { const u = U[id] || {}, o = u.move || [0, 0]; U[id] = { ...u, move: [o[0] + dx, o[1] + dy] }; }
+  saveU(s.psd); commit(b, 'nudge');
+  for (const x of scenes) if (x.psd === s.psd) rebuildFx(x);
+  clearTimeout(nudgeT); nudgeT = setTimeout(() => syncFx(s), 300);
+}
+function selectAll(s) {
+  const U = uOf(s.psd), ids = [];
+  for (const r of s.tree || []) {
+    if (r.kind === 'group' || !r.selectable || isOff(r, U[r.lid])) continue;
+    ids.push(r.inGroup || r.lid);
+  }
+  selMulti = [...new Set(ids)]; selLid = selMulti[0] != null ? selMulti[0] : null;
+  if (selMulti.length < 2) selMulti = [];
+  renderTree(s);
+}
+// open the folders above a row so a layer picked on the preview shows in the list
+function revealRow(s, lid) {
+  const tree = s.tree || [], i = tree.findIndex(r => r.lid === lid), col = colOf(s.psd);
+  if (i < 0) return;
+  let d = tree[i].depth;
+  for (let j = i - 1; j >= 0 && d > 0; j--) if (tree[j].depth < d) { col.delete(tree[j].lid); d = tree[j].depth; }
+  saveCol(s.psd);
+}
+// 群組展開／收合 (the list only; remembered per PSD)
+const collapsed = {};
+function colOf(psd) { if (!collapsed[psd]) collapsed[psd] = new Set(readJSON('collapsed:' + psd) || []); return collapsed[psd]; }
+function saveCol(psd) { try { localStorage.setItem('collapsed:' + psd, JSON.stringify([...colOf(psd)])); } catch (e) {} }
+let fxClip = null;   // 拷貝特效
+const FX_COPY = ['main', 'pulse', 'sweep', 'hue', 'stroke', 'step', 'enter'];
+function copyFx(s, lid) {
+  const r = (s.tree || []).find(t => t.lid === lid), f = effFx(r && r.fx, uOf(s.psd)[lid]);
+  fxClip = { main: f.main, pulse: f.pulse, sweep: f.sweep, hue: f.hue, stroke: f.stroke, step: f.step, enter: f.enter || false };
+  toast('已拷貝特效');
+}
+async function pasteFx(s, ids, clip) {
+  const b = snap(), U = uOf(s.psd);
+  for (const id of ids) U[id] = { ...(U[id] || {}), ...clip };
+  saveU(s.psd); commit(b);
+  await syncFx(s);
+}
+// 拖曳改順序: ids (list order, top first) go above / below / into target
+async function reorder(s, ids, target, where) {
+  ids = ids.filter(l => l !== target && l < 900000);
+  if (!ids.length) return;
+  const b = snap(), ops = opsOf(s.psd), order = (s.tree || []).map(r => r.lid);
+  ids.sort((a, c) => order.indexOf(a) - order.indexOf(c));
+  if (where !== 'above') ids.reverse();
+  for (const id of ids) ops.moves.push([id, target, where]);
+  saveOps(s.psd); commit(b);
+  await syncFx(s);
+}
+async function resetOrder(s) { const b = snap(); opsOf(s.psd).moves = []; saveOps(s.psd); commit(b); await syncFx(s); }
+// 改名稱 (empty = back to the PS name); a 群組 renames the group
+async function renameLayer(s, lid, name) {
+  name = String(name || '').trim();
+  const g = gOf(s.psd).find(x => x.id === lid);
+  if (g) { if (!name) return; const b = snap(); g.name = name; saveG(s.psd); commit(b); await syncFx(s); return; }
+  await editFx(s, lid, u => { if (name) u.name = name; else delete u.name; });
+}
+
+// 尺標 along the top of the preview: scene x in px, redrawn when the zoom / scroll changes
+let rulerKey = '';
+function drawRuler() {
+  const rc = $('#ruler'), cv = $('#cv');
+  if (!current) return;
+  const w = rc.getBoundingClientRect(), r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const key = [w.width, r.left - w.left, r.width, dpr, current.w].join();
+  if (key === rulerKey) return;
+  rulerKey = key;
+  rc.width = Math.round(w.width * dpr); rc.height = Math.round(20 * dpr);
+  const x = rc.getContext('2d'), k = r.width / current.w, x0 = r.left - w.left;
+  x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w.width, 20);
+  const step = [10, 20, 50, 100, 200, 500, 1000, 2000].find(v => v * k >= 60) || 5000;
+  x.strokeStyle = '#55555b'; x.fillStyle = '#8d8d93'; x.font = '10px sans-serif'; x.textBaseline = 'top';
+  for (let v = 0; v <= current.w; v += step / 5) {
+    const px = Math.round(x0 + v * k) + 0.5, big = Math.abs(v % step) < 1e-6;
+    x.beginPath(); x.moveTo(px, big ? 6 : 14); x.lineTo(px, 20); x.stroke();
+    if (big) x.fillText(String(v), px + 2, 2);
+  }
+}
+
+// ---------- 畫布縮放 ----------
+// zoom: 'fit' = whole artboard in view, 'width' = fill the width (scroll long pages), or a scale (1 = 100%)
+let zoom = 'fit', zoomTouched = false;
+const ZSTEPS = [0.05, 0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
+const viewScale = () => { const cv = $('#cv'); return cv.getBoundingClientRect().width / cv.width; };
+// anchor = {sx, sy, cx, cy}: keep scene point (sx, sy) under client point (cx, cy)
+function applyZoom(anchor) {
+  if (!current) return;
+  const cv = $('#cv'), v = $('#view');
+  if (zoom === 'fit') {
+    cv.style.width = ''; cv.style.maxWidth = cv.style.maxHeight = '100%';
+  } else {
+    const k = zoom === 'width' ? Math.max(0.02, (v.clientWidth - 24) / current.w) : zoom;
+    cv.style.maxWidth = cv.style.maxHeight = 'none';
+    cv.style.width = Math.max(1, Math.round(current.w * k)) + 'px';
+  }
+  const k = viewScale();
+  if (anchor) {
+    const r = cv.getBoundingClientRect();
+    v.scrollLeft += r.left + anchor.sx * k - anchor.cx;
+    v.scrollTop += r.top + anchor.sy * k - anchor.cy;
+  }
+  $('#zPct').textContent = Math.round(k * 100) + '%';
+  $('#zFit').classList.toggle('on', zoom === 'fit');
+  $('#zWidth').classList.toggle('on', zoom === 'width');
+  $('#z100').classList.toggle('on', zoom === 1);
+}
+function setZoom(z, anchor) { zoom = z; zoomTouched = true; applyZoom(anchor); }
+function zoomStep(dir, anchor) {
+  const k = viewScale();
+  const next = dir > 0 ? ZSTEPS.find(z => z > k * 1.01) : [...ZSTEPS].reverse().find(z => z < k * 0.99);
+  if (next) setZoom(next, anchor);
+}
+function centerAnchor() {
+  const v = $('#view').getBoundingClientRect(), r = $('#cv').getBoundingClientRect(), k = viewScale();
+  const cx = v.left + v.width / 2, cy = v.top + v.height / 2;
+  return { sx: (cx - r.left) / k, sy: (cy - r.top) / k, cx, cy };
+}
+$('#zIn').onclick = () => zoomStep(1, centerAnchor());
+$('#zOut').onclick = () => zoomStep(-1, centerAnchor());
+$('#zFit').onclick = () => setZoom('fit');
+$('#zWidth').onclick = () => setZoom('width');
+$('#z100').onclick = () => setZoom(1, centerAnchor());
+// Ctrl+wheel zooms around the cursor; a plain wheel scrolls as usual
+$('#view').addEventListener('wheel', e => {
+  if (!current || !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  const r = $('#cv').getBoundingClientRect(), k = viewScale();
+  const a = { sx: (e.clientX - r.left) / k, sy: (e.clientY - r.top) / k, cx: e.clientX, cy: e.clientY };
+  setZoom(Math.min(8, Math.max(0.02, k * (e.deltaY < 0 ? 1.15 : 1 / 1.15))), a);
+}, { passive: false });
+window.addEventListener('resize', () => applyZoom());
+
+// ---------- UI ----------
+// Must match APP_VERSION in server.py. The page is read fresh on every F5 but the server only
+// changes when its black window is restarted, so a mismatch means "please restart".
+const APP_VERSION = '2026-11-13h';
+async function checkServer() {
+  let v = null;
+  try { const r = await fetch('/api/version'); if (r.ok) v = (await r.json()).version; } catch (e) {}
+  $('#stale').hidden = v === APP_VERSION;
+}
+const STALE_MSG = '小工具的伺服器是舊版：請關掉黑色視窗（工作列上的「動態小工具」），再點一次桌面捷徑';
+async function api(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  if (r.status === 404) { $('#stale').hidden = false; throw new Error(STALE_MSG); }   // old server without this feature
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// The open PSDs are remembered (just their paths) and reopened after F5; layers come back
+// from the server's cache, so a reload is quick and saves nothing extra.
+function saveOpen() {
+  try { localStorage.setItem('motion-open', JSON.stringify([...new Set(scenes.map(s => s.psd))])); } catch (e) {}
+}
+// errs: an array from the 指令介面 to collect problems in instead of popping up alerts
+async function load(paths, quiet, errs) {
+  if (!paths.length) return;
+  $('#scenes').innerHTML = '<div class="empty">讀取 PSD 中…（大檔第一次會比較久）</div>';
+  try {
+    const r = await api('/api/load', { paths, split: splitMap(), hide: hideMap(paths), show: showMap(paths), groups: groupsMap(paths), ops: opsMap(paths) });
+    for (const p of paths) hidAt[p] = visKey(p);
+    for (const s of r.scenes) {
+      prepare(s.nodes);
+      await loadImages(s.nodes);
+      s.checked = true;
+      s.guides = [];
+      try { s.guides = JSON.parse(localStorage.getItem(guideKey(s)) || '[]'); } catch (e) {}
+      addVRows(s);
+      rebuildFx(s);
+      // Already open (same PSD + artboard): swap in the fresh copy so an edited PSD really reloads
+      const i = scenes.findIndex(x => x.id === s.id);
+      if (i < 0) { scenes.push(s); continue; }
+      s.checked = scenes[i].checked;
+      if (current === scenes[i]) current = s;
+      scenes[i] = s;
+    }
+    if (r.errors.length && errs) errs.push(...r.errors);
+    else if (r.errors.length) alert((quiet ? '上次開的檔案有些打不開（可能被移走或刪掉了）：\n' : '有檔案讀取失敗：\n') + r.errors.join('\n'));
+  } catch (e) { const m = (e && e.message) || String(e); if (errs) errs.push('讀取失敗：' + m); else alert('讀取失敗：' + m); }
+  saveOpen();
+  renderList();
+  if (current) select(current); else if (scenes.length) select(scenes[0]);
+}
+function closePsd(psd) {
+  scenes = scenes.filter(s => s.psd !== psd);
+  if (current && current.psd === psd) { current = null; selLid = null; }
+  saveOpen();
+  if (!current && scenes.length) select(scenes[0]);
+  else if (!current) { renderList(); renderTree(null); $('#layers').innerHTML = ''; renderSlices(); }
+  else renderList();
+}
+function renderList() {
+  $('#count').textContent = scenes.length ? `${scenes.length} 個畫板` : '尚未載入';
+  $('#bExport').disabled = !scenes.length || busy;
+  if (!scenes.length) { $('#scenes').innerHTML = '<div class="empty">把 PSD 拖進來，或按「選擇 PSD…」<br>每個畫板會變成一支影片</div>'; return; }
+  $('#scenes').innerHTML = '';
+  for (const s of scenes) {
+    const d = document.createElement('div');
+    d.className = 'scene' + (s === current ? ' active' : '');
+    d.innerHTML = `<input type="checkbox" ${s.checked ? 'checked' : ''}><div style="flex:1;min-width:0"><div class="t">${esc(s.title)}</div>
+      <div class="s">${esc(s.psdName)}・${s.w}×${s.h}・動態 ${fxNodes(s).filter(n => n.fx).length} 層</div>${s.done ? `<div class="done">${esc(s.done)}</div>` : ''}</div>
+      <button class="x" title="從清單移除這份 PSD（不會刪掉檔案）">✕</button>`;
+    d.querySelector('.x').onclick = e => { e.stopPropagation(); closePsd(s.psd); };
+    const cb = d.querySelector('input');
+    cb.onclick = e => { e.stopPropagation(); const b = snap(); s.checked = cb.checked; commit(b); };
+    d.onclick = () => select(s);
+    $('#scenes').appendChild(d);
+  }
+}
+function select(s) {
+  if (current !== s) { selLid = null; selMulti = []; }
+  const changed = current !== s;
+  current = s;
+  cfg = cfgFor(s);
+  if (changed) syncInputs();   // the panel shows this artboard's own settings
+  renderTree(s);
+  const cv = $('#cv'); cv.width = s.w; cv.height = s.h;
+  if (!zoomTouched) zoom = s.h > s.w * 2 ? 'width' : 'fit';   // long pages open fitted to the width
+  applyZoom();
+  $('#view').scrollTop = 0;
+  renderList();
+  renderLayers(s);
+  renderSlices();
+  showLoop();
+}
+function tick(now) {
+  loopScene = current;
+  const L = loopLen();
+  if (playing) tNow = ((now - t0) / 1000) % L;
+  if (current) { const x = $('#cv').getContext('2d'); drawScene(x, current, tNow); drawGuides(x, current); drawRuler(); }
+  $('#scrub').value = Math.round(tNow / L * 1000);
+  $('#time').textContent = tNow.toFixed(2) + ' / ' + L + ' s';
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+$('#bPlay').onclick = () => { playing = !playing; $('#bPlay').textContent = playing ? '暫停' : '播放'; if (playing) t0 = performance.now() - tNow * 1000; };
+$('#scrub').oninput = e => { playing = false; $('#bPlay').textContent = '播放'; tNow = e.target.value / 1000 * loopLen(); };
+$('#bFiles').onclick = async () => load((await api('/api/pick', { mode: 'files' })).paths);
+$('#bFolder').onclick = async () => load((await api('/api/pick', { mode: 'folder' })).paths);
+const typed = () => $('#paths').value.split(/[\n;]+/).map(s => s.trim()).filter(Boolean);
+$('#bLoad').onclick = () => load(typed());
+$('#paths').onkeydown = e => { if (e.key === 'Enter') load(typed()); };
+// ---------- 拖曳 PSD 進來 ----------
+// The browser only hands over the file, not where it lives. Ask the server to find the
+// original by name + size + modified time (so 輸出 lands next to it); upload a copy otherwise.
+async function pathOfDropped(file) {
+  const hints = scenes.map(s => s.psd);
+  const r = await api('/api/locate', { name: file.name, size: file.size, mtime: file.lastModified, hints });
+  if (r.path) return { path: r.path, found: true };
+  toast(`找不到「${file.name}」的原檔，上傳一份中…`);
+  const up = await fetch('/api/upload?name=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+  if (up.status === 404) { $('#stale').hidden = false; throw new Error(STALE_MSG); }
+  const j = await up.json();
+  if (!up.ok) throw new Error(j.error || up.statusText);
+  return { path: j.path, found: false };
+}
+(function dropZone() {
+  let depth = 0;
+  const isFiles = e => [...(e.dataTransfer && e.dataTransfer.types || [])].includes('Files');
+  window.addEventListener('dragenter', e => { if (!isFiles(e)) return; e.preventDefault(); depth++; $('#drop').hidden = false; });
+  window.addEventListener('dragleave', e => { if (!isFiles(e)) return; if (--depth <= 0) { depth = 0; $('#drop').hidden = true; } });
+  window.addEventListener('dragover', e => { if (isFiles(e)) e.preventDefault(); });   // keeps the browser from opening the file
+  window.addEventListener('drop', async e => {
+    if (!isFiles(e)) return;
+    e.preventDefault(); depth = 0; $('#drop').hidden = true;
+    const files = [...e.dataTransfer.files].filter(f => /\.(psd|psb)$/i.test(f.name));
+    if (!files.length) return alert('只能拖 PSD／PSB 檔（資料夾請用「選擇資料夾…」）');
+    toast(`找 ${files.length} 個 PSD 的位置中…`);
+    const paths = [], copied = [];
+    for (const f of files) {
+      try { const r = await pathOfDropped(f); paths.push(r.path); if (!r.found) copied.push(f.name); }
+      catch (err) { alert(`「${f.name}」載入失敗：${err.message}`); }
+    }
+    if (copied.length) alert(`這些檔案找不到原本的位置，已複製到小工具的「拖進來的PSD」資料夾，輸出也會在那裡：\n${copied.join('\n')}\n\n想輸出到 PSD 旁邊，可以改用「選擇 PSD…」。`);
+    await load(paths);
+  });
+})();
+// 右邊分頁：圖層／動態設定／輸出（記住上次開的）
+function showTab(id) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
+  for (const p of ['treePane', 'settings', 'outPane']) $('#' + p).hidden = p !== id;
+  try { localStorage.setItem('motion-tab', id); } catch (e) {}
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+try { const t = localStorage.getItem('motion-tab'); if (t && $('#' + t)) showTab(t); } catch (e) {}
+$('#all').onchange = e => { const b = snap(); scenes.forEach(s => s.checked = e.target.checked); commit(b); renderList(); };
+
+// ---------- export: frames are drawn here, ffmpeg encodes on the Python side ----------
+function log(html) { const d = document.createElement('div'); d.innerHTML = html; $('#log').prepend(d); return d; }
+// seg = the band to export ({y0, y1}); the whole artboard when there are no guides.
+// GIF frame times are whole 1/100 s: take the highest even rate not above the setting
+const gifRate = f => [50, 25, 20, 12.5, 10, 6.25, 5].find(x => x <= (f || 25)) || 5;
+async function exportOne(s, fmt, step, seg = { y0: 0, y1: s.h }, name = s.outName) {
+  const C = cfgFor(s);                                 // this artboard's settings (export awaits: no global swap)
+  const fps = fmt === 'mp4' ? Math.max(1, C.mp4Fps || 30) : gifRate(C.gifFps);
+  const L = withCfg(s, () => { loopScene = s; return loopLen(); });   // its own (auto) loop length
+  // whole frames spread evenly over the loop, so the last frame is as long as the others (no hitch when it repeats)
+  const N = Math.max(1, Math.round(L * fps));
+  const c = document.createElement('canvas'); c.width = s.w; c.height = seg.y1 - seg.y0;
+  const ctx = c.getContext('2d');
+  const { job } = await api('/api/export/begin');
+  for (let i = 0; i < N; i++) {
+    drawScene(ctx, s, i * L / N, 1, seg.y0);
+    const blob = await new Promise(ok => c.toBlob(ok, 'image/png'));
+    for (let tries = 1; ; tries++) {   // 偶爾連線會斷，重送幾次
+      try {
+        const r = await fetch(`/api/export/frame?job=${job}&i=${i}`, { method: 'POST', body: blob });
+        if (r.ok) break;
+        throw new Error('HTTP ' + r.status);
+      } catch (e) {
+        if (tries >= 4) throw new Error(`送出第 ${i + 1} 格失敗：${e.message}`);
+        await new Promise(ok => setTimeout(ok, 300 * tries));
+      }
+    }
+    step((i + 1) / N);
+  }
+  return api('/api/export/end', {
+    job, fmt, fps, psd: s.psd, outName: name, w: s.w, bg: s.bg || C.bg,
+    repeat: C.mp4Repeat, mp4Width: C.mp4Width, width: C.gifWidth, maxMB: C.gifMB,
+  });
+}
+async function exportStill(s, seg, name) {
+  const c = document.createElement('canvas'); c.width = s.w; c.height = seg.y1 - seg.y0;
+  drawScene(c.getContext('2d'), s, 0, 1, seg.y0);
+  const ext = cfgFor(s).stillFmt === 'jpg' ? 'jpg' : 'png';
+  const blob = await new Promise(ok => c.toBlob(ok, ext === 'jpg' ? 'image/jpeg' : 'image/png', 0.92));
+  const q = new URLSearchParams({ psd: s.psd, name, ext });
+  const r = await fetch('/api/export/still?' + q, { method: 'POST', body: blob });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return { ...j, note: `${s.w}×${seg.y1 - seg.y0} 靜態` };
+}
+// Everything one artboard produces: [{label, run(step)}]
+function tasksOf(s, fmts) { return withCfg(s, () => tasksOf0(s, fmts)); }
+function tasksOf0(s, fmts) {
+  const vid = (seg, name) => fmts.map(fmt => ({ label: `${name} ${fmt.toUpperCase()}`, fmt, run: step => exportOne(s, fmt, step, seg, name) }));
+  if (!s.guides.length) return vid(undefined, s.outName);
+  return slicesOf(s).flatMap((g, i) => {
+    const name = `${s.outName}_${String(i + 1).padStart(2, '0')}`;
+    return g.moving ? vid(g, name) : [{ label: `${name} ${cfg.stillFmt.toUpperCase()}`, fmt: cfg.stillFmt, run: () => exportStill(s, g, name) }];
+  });
+}
+$('#bExport').onclick = () => exportChecked().catch(e => alert(e.message));
+// Exports the ticked artboards, each with its own PSD's MP4/GIF choice (formats = override);
+// returns one entry per file ({path, mb, note} or {label, error}).
+async function exportChecked(formats) {
+  const list = scenes.filter(s => s.checked), out = [];
+  const fmtsOf = s => { const C = cfgFor(s); return formats || [C.doMp4 && 'mp4', C.doGif && 'gif'].filter(Boolean); };
+  const jobs = list.map(s => [s, tasksOf(s, fmtsOf(s))]);
+  const total = jobs.reduce((n, [, t]) => n + t.length, 0); let k = 0;
+  if (!total) throw new Error('請勾選要輸出的畫板，以及 MP4 / GIF 至少一種');
+  const btn = $('#bExport'), prog = $('#prog');
+  busy = btn.disabled = true; prog.hidden = false;
+  for (const [s, tasks] of jobs) {
+    let ok = 0;
+    for (const task of tasks) {
+      btn.textContent = `輸出中 ${k + 1}/${total}：${task.label}`;
+      try {
+        const r = await task.run(f => prog.value = (k + f * 0.9) / total);
+        const a = log(`✔ ${esc(r.path.split(/[\\/]/).pop())}　${r.mb} MB　${esc(r.note)}　<a>開啟位置</a>`);
+        a.querySelector('a').onclick = () => api('/api/reveal', { path: r.path });
+        ok++; out.push({ path: r.path, mb: r.mb, note: r.note });
+      } catch (e) { log(`<span class="warn">✘ ${esc(task.label)}：${esc(e.message)}</span>`); out.push({ label: task.label, error: e.message }); }
+      prog.value = ++k / total;
+    }
+    s.done = ok ? `已輸出 ${ok}/${tasks.length} 個檔案` : '';
+    renderList();
+  }
+  busy = btn.disabled = false; btn.textContent = '輸出勾選的畫板'; prog.hidden = true;
+  return out;
+}
+
+// ---------- 動態範本: this artboard's manual effects (by layer name) + its settings, reusable ----------
+const TPL_KEY = 'motion-tpl';
+const tplAll = () => readJSON(TPL_KEY) || {};
+function renderTpl() {
+  const sel = $('#tplSel'), names = Object.keys(tplAll()).sort();
+  sel.innerHTML = names.length ? names.map(n => `<option>${esc(n)}</option>`).join('') : '<option value="">（還沒有範本）</option>';
+}
+function saveTpl(name) {
+  if (!current) throw new Error('先開一個 PSD');
+  name = String(name || '').trim();
+  if (!name) throw new Error('請給範本名稱');
+  const U = uOf(current.psd), fx = {};
+  for (const r of current.tree || []) if (U[r.lid]) fx[r.name] = { ...U[r.lid] };
+  const all = tplAll(), keep = { ...cfg };
+  delete keep.v;
+  all[name] = { cfg: JSON.parse(JSON.stringify(keep)), fx, from: current.psd.split(/[\\/]/).pop() + '／' + current.title };
+  localStorage.setItem(TPL_KEY, JSON.stringify(all));
+  renderTpl(); $('#tplSel').value = name;
+  return { name, layers: Object.keys(fx).length };
+}
+// Layers match by name (same name in another PSD = same role); settings replace this artboard's.
+async function applyTpl(name) {
+  const t = tplAll()[name];
+  if (!t) throw new Error('找不到範本：' + name);
+  if (!current) throw new Error('先開一個 PSD');
+  const s = current, b = snap(), U = uOf(s.psd), hit = [];
+  for (const r of s.tree || []) if (t.fx[r.name]) { U[r.lid] = { ...t.fx[r.name] }; hit.push(r.name); }
+  useCurrentCfg();
+  for (const k in t.cfg) if (k in DEFAULTS) cfg[k] = JSON.parse(JSON.stringify(t.cfg[k]));
+  saveU(s.psd); commit(b); saveCfg(); syncInputs();
+  await syncFx(s);
+  return { name, matched: hit, missing: Object.keys(t.fx).filter(n => !hit.includes(n)) };
+}
+renderTpl();
+$('#tplSave').onclick = () => { const n = prompt('範本名稱（例如：PINKOI 方案卡）', $('#tplSel').value || ''); if (n) try { const r = saveTpl(n); toast(`已存「${r.name}」：${r.layers} 個圖層的特效＋右邊設定`); } catch (e) { alert(e.message); } };
+$('#tplApply').onclick = async () => { const n = $('#tplSel').value; if (!n) return; try { const r = await applyTpl(n); toast(`已套用「${n}」：對到 ${r.matched.length} 個圖層` + (r.missing.length ? `，${r.missing.length} 個名稱這裡沒有` : '')); } catch (e) { alert(e.message); } };
+$('#tplDel').onclick = () => { const n = $('#tplSel').value; if (!n || !confirm(`刪除範本「${n}」？`)) return; const all = tplAll(); delete all[n]; localStorage.setItem(TPL_KEY, JSON.stringify(all)); renderTpl(); };
+
+// ---------- 指令介面 (MCP / scripts drive this page through server.py) ----------
+// The page keeps asking /api/cmd/next; each command runs here (where the drawing lives) and
+// its result goes back to /api/cmd/done. Polling never waits for a command to finish, so a
+// long export doesn't make the server think the page closed.
+const sceneOf = a => {
+  if (a == null || a === '') return current;
+  if (typeof a === 'number') return scenes[a - 1] || null;
+  return scenes.find(s => s.id === a) || scenes.find(s => s.title === a) || scenes.find(s => s.title.includes(a)) ||
+    scenes.find(s => s.psd.replace(/\\/g, '/').split('/').pop().includes(a)) || null;   // or the PSD's file name
+};
+const needScene = a => { const s = sceneOf(a); if (!s) throw new Error(scenes.length ? '找不到這個畫板' : '還沒有開任何 PSD'); return s; };
+const loopOf = s => +(cfg.loopAuto && s.autoLoop ? s.autoLoop : Math.max(0.5, cfg.loop || 4)).toFixed(3);
+const sceneInfo = s => ({ id: s.id, n: scenes.indexOf(s) + 1, title: s.title, psd: s.psd, w: s.w, h: s.h,
+  checked: !!s.checked, current: s === current, loop: loopOf(s), guides: s.guides.length });
+const FX_KEYS = ['main', 'pulse', 'sweep', 'hue', 'stroke', 'step', 'order', 'solo', 'hidden', 'enter', 'show', 'name', 'move'];
+const CMD = {
+  status: () => ({ version: APP_VERSION, busy, scenes: scenes.map(sceneInfo) }),
+  open: async a => {
+    const paths = [].concat(a.paths || a.path || []);
+    if (!paths.length) throw new Error('請給 PSD 路徑');
+    const errors = [];
+    await load(paths, true, errors);
+    return { ...CMD.status(), errors };
+  },
+  select: a => { const s = needScene(a.scene); select(s); return sceneInfo(s); },
+  // Layers of an artboard: each row's effects as they apply now (name + manual), and its 接續 turn
+  layers: a => {
+    const s = needScene(a.scene), U = uOf(s.psd), nodes = new Map(fxNodes(s).map(n => [n.lid, n]));
+    return (s.tree || []).map(r => {
+      const f = effFx(r.fx, U[r.lid]), n = nodes.get(r.lid);
+      return { lid: r.lid, name: r.name, depth: r.depth, kind: r.kind, selectable: r.selectable, psHidden: !!r.psHidden,
+        fx: anyFx(f) ? f : null, manual: U[r.lid] || null, slot: n && n.fx ? n.slot : undefined };
+    });
+  },
+  // fx: { main: 'bob'|'sway'|'flash'|null, pulse, sweep, step: true|false|null, order: number|null };
+  // null removes that manual override (back to what the layer name says); reset: true clears all.
+  set_fx: async a => {
+    const s = needScene(a.scene), lids = [].concat(a.lid ?? a.lids ?? []).map(Number);
+    if (!lids.length) throw new Error('請給圖層 lid');
+    for (const lid of lids) {
+      const r = (s.tree || []).find(x => x.lid === lid);
+      if (!r) throw new Error('這個畫板沒有圖層 ' + lid);
+      if (!r.selectable && Object.keys(a.fx || {}).some(k => k !== 'hidden' && k !== 'show')) throw new Error(`「${r.name}」是調整圖層／剪裁遮色片，不能單獨動`);
+      await editFx(s, lid, u => {
+        if (a.reset) for (const k in u) delete u[k];
+        for (const k of FX_KEYS) if (a.fx && k in a.fx) { if (a.fx[k] === null) delete u[k]; else u[k] = a.fx[k]; }
+      });
+    }
+    return CMD.layers({ scene: s.id }).filter(r => lids.includes(r.lid));
+  },
+  // settings of the selected artboard (each artboard keeps its own)
+  get_settings: () => ({ psd: current ? current.psd : null, board: current ? current.title : null, ...cfg }),
+  set_settings: a => {
+    const v = a.values || {}, bad = Object.keys(v).filter(k => !(k in DEFAULTS));
+    if (bad.length) throw new Error('沒有這些設定：' + bad.join('、'));
+    const before = snap();
+    for (const k in v) setSetting(k, v[k]);
+    commit(before);
+    saveCfg(); syncInputs(); remapNow();
+    return { values: Object.fromEntries(Object.keys(v).map(k => [k, cfg[k]])), rhythm: current ? CMD.rhythm({}) : null };
+  },
+  // What the 整體 panel spells out: loop length, per-effect action time, 逐格 timing, timeline
+  rhythm: a => {
+    const s = needScene(a.scene), was = current;
+    current = s; cfg = cfgFor(s); showLoop(); const text = $('#loopWhy').textContent;
+    current = was; useCurrentCfg(); showLoop();
+    return { loop: loopOf(s), auto: !!cfg.loopAuto, text };
+  },
+  // Motion values of layers at given times (s): [dy px, rot °, scale, opacity] — checks timing without frames
+  sample: a => {
+    const s = needScene(a.scene), want = a.lids ? [].concat(a.lids).map(Number) : null;
+    const nodes = fxNodes(s).filter(n => n.fx && (!want || want.includes(n.lid)));
+    const L = loopOf(s), times = a.times || Array.from({ length: 9 }, (_, i) => +(L * i / 8).toFixed(3));
+    const was = cfg; cfg = cfgFor(s); loopScene = s;
+    try {
+      return { loop: L, times, layers: nodes.map(n => ({ lid: n.lid, slot: n.slot,
+        at: times.map(t => { const m = motion(n, t); return [+m.dy.toFixed(2), +m.rot.toFixed(2), +m.sc.toFixed(4), +m.op.toFixed(3)]; }) })) };
+    } finally { loopScene = null; cfg = was; }
+  },
+  set_guides: a => {
+    const s = needScene(a.scene), b = snap();
+    s.guides = [].concat(a.guides || []).map(Number).filter(y => y > 0 && y < s.h).sort((x, y) => x - y);
+    saveGuides(s); commit(b); renderSlices();
+    return sceneInfo(s);
+  },
+  // scenes: which artboards to tick (ids / titles / numbers, or 'all'); omitted = keep the ticks as they are
+  export: async a => {
+    if (busy) throw new Error('正在輸出中，等它做完');
+    if (a.scenes) {
+      const pick = a.scenes === 'all' ? scenes : [].concat(a.scenes).map(needScene);
+      scenes.forEach(s => s.checked = pick.includes(s)); renderList();
+    }
+    return await exportChecked(a.formats ? [].concat(a.formats).filter(f => f === 'mp4' || f === 'gif') : undefined);
+  },
+  // 動態範本: action 'list' | 'save' | 'apply' | 'delete'
+  template: async a => {
+    if (a.action === 'save') return saveTpl(a.name);
+    if (a.action === 'apply') return await applyTpl(a.name);
+    if (a.action === 'delete') { const all = tplAll(); delete all[a.name]; localStorage.setItem(TPL_KEY, JSON.stringify(all)); renderTpl(); return { deleted: a.name }; }
+    return Object.entries(tplAll()).map(([name, t]) => ({ name, from: t.from, layers: Object.keys(t.fx) }));
+  },
+  // 圖層順序: lids go 'above'|'below'|'into' target; reset: back to the PS order
+  reorder: async a => {
+    const s = needScene(a.scene);
+    if (a.reset) { await resetOrder(s); return { reset: true }; }
+    await reorder(s, [].concat(a.lids || []).map(Number), Number(a.target), a.where || 'above');
+    return CMD.layers({ scene: s.id }).map(r => [r.lid, r.name, r.depth]);
+  },
+  // 群組: action 'make' (lids, name) | 'ungroup' (id) | 'list'
+  group: async a => {
+    const s = needScene(a.scene);
+    if (a.action === 'make') return await makeGroup(s, [].concat(a.lids || []).map(Number), a.name);
+    if (a.action === 'ungroup') { await ungroup(s, Number(a.id)); return { ungrouped: Number(a.id) }; }
+    return gOf(s.psd);
+  },
+  undo: () => { undo(false); return CMD.status(); },
+  redo: () => { undo(true); return CMD.status(); },
+};
+// Only one tab takes commands (else they alternate between tabs that each hold their own
+// settings). The newest tab, or the one last clicked, claims it; on claiming it rereads the
+// settings and manual effects other tabs may have saved, so it continues from the latest state.
+const TAB_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+async function claimTab() {
+  try {
+    let changed = false;
+    for (const key in cfgs) {
+      const saved = readJSON(key);
+      if (saved && JSON.stringify(saved) !== JSON.stringify(cfgs[key])) { cfgs[key] = normCfg(saved); changed = true; }
+    }
+    if (changed) { useCurrentCfg(); syncInputs(); remapNow(); }
+    const stale = [];
+    for (const psd in fxUser) {
+      const now = localStorage.getItem(userKey(psd)) || '{}';
+      if (now !== JSON.stringify(fxUser[psd])) { fxUser[psd] = JSON.parse(now); stale.push(psd); }
+    }
+    if (stale.length) await load(stale, true);
+  } catch (e) {}
+  $('#standby').hidden = true;
+  try { await fetch('/api/cmd/claim', { method: 'POST', body: JSON.stringify({ tab: TAB_ID }) }); } catch (e) {}
+}
+$('#standby').onclick = claimTab;
+window.addEventListener('focus', claimTab);
+claimTab();
+async function cmdLoop() {
+  for (;;) {
+    let c = {};
+    try { c = await (await fetch('/api/cmd/next?tab=' + TAB_ID, { cache: 'no-store' })).json(); }
+    catch (e) { await new Promise(r => setTimeout(r, 3000)); continue; }   // server closed: try again later
+    $('#standby').hidden = !c.standby;
+    if (!c.id) continue;
+    (async () => {
+      let res;
+      try {
+        if (!CMD[c.cmd]) throw new Error('沒有這個指令：' + c.cmd);
+        res = { ok: true, result: await CMD[c.cmd](c.args || {}) };
+      } catch (e) { res = { ok: false, error: e.message || String(e) }; }
+      fetch('/api/cmd/done', { method: 'POST', body: JSON.stringify({ id: c.id, ...res }) });
+    })();
+  }
+}
+cmdLoop();
+
+renderPal();
+checkServer();
+// reopen what was open before F5 / restarting the tool
+try { const open = JSON.parse(localStorage.getItem('motion-open') || '[]'); if (open.length) load(open, true); } catch (e) {}
+</script>
+</body>
+</html>
