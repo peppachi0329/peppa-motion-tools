@@ -34,6 +34,14 @@
 - Python 3.10 以上（安裝時勾選「Add Python to PATH」）
 - ffmpeg（要能在命令列打 `ffmpeg` 執行）
 
+> 💡 **不會裝也沒關係，直接叫你自己的 AI 代理（Claude Code、Codex）幫你裝。** 把下面這段貼給它：
+>
+> ```
+> 幫我在這台 Windows 電腦安裝 Python 3.10 以上和 ffmpeg，兩個都要加到 PATH。
+> 裝好後到「動態小工具」資料夾執行 pip install -r requirements.txt，
+> 最後確認 python --version 和 ffmpeg -version 都跑得出來。
+> ```
+
 **安裝**
 1. 打開 `動態小工具` 資料夾，雙擊 `安裝套件.bat`（只要第一次）
 2. 之後雙擊 `啟動.bat`，瀏覽器會自己打開小工具
